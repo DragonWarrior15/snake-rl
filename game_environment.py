@@ -1,9 +1,14 @@
 '''
 This script stores the game environment. Note that the snake is a part of the
 environment itself in this implementation.
+The environment state is a set of frames, we want the agent to be able to discern
+the movement of the snake as well for which multiple frames are needed.
+We will keep track of a history of 4 frames.
+Important to manually reset the environment by user after initialization.
 '''
 
 import numpy as np
+from collections import deque
 
 class Position:
     '''
@@ -33,8 +38,6 @@ class Snake:
         snake_length (int) : current length of the snake
         snake_head (int, int) : Position containing the row and column no of board
                                 for snake head
-        snake_tail (int, int) : Position containing the row and column no of board
-                                for snake tail
         food (int, int) : Position containing the coordinates for the food
     '''
     def __init__(self, board_size = 10, start_length = 5, seed = 42):
@@ -44,22 +47,20 @@ class Snake:
         self._value = {'snake':10, 'board':0, 'food':5}
         self._actions = {0:'none', 1:'left', 2:'right'}
         self._size = board_size
+        self._n_frames = 4
         # set numpy seed for reproducible results
         np.random.seed(seed)
         # initialize other parameters
         self._snake_length = start_length
-        self._snake_tail = Position(self._size//2, 0)
-        self._snake_head = Position(self._size//2, 0 + self._snake_length)
 
-        # randomly initialize the location of food in the empty cells
-        food_x, food_y = list(range(self._size)), list(range(self._size))
-        food_x.remove(self._snake_head.row)
-        food_x = np.random.choice(food_x, 1)[0]
-        food_y = np.random.choice(food_y, 1)[0]
-        self._food = Position(food_x, food_y)
-
-        self._board = self.reset()
-
+    def _queue_to_board(self):
+        '''
+        Convert the current queue of frames to a 3D matrix
+        Returns:
+            board : np array of 3 dimensions
+        '''
+        board = np.dstack([x for x in self._board])
+        return board.copy()
 
     def _print_game():
         ''' prints the current state (board) '''
@@ -72,14 +73,46 @@ class Snake:
             board : the current board state
         '''
         board = np.zeros(self._size ** 2)
-
+        self._snake_head = Position(self._size//2, 0 + self._snake_length)
         # modify the board values for the snake, assumed to be lying horizontally initially
         for i in range(self._snake_length):
             board[5, i] = self._value['snake']
         # modify the food position on the board
-        board[self._food.row, self._food.col] = self._value['food']
+        self._get_food()
+        # queue, left most entry is the latest frame
+        self._board = deque(self._n_frames)
+        for i in range(self._n_frames):
+            if(i == 0):
+                self._board.appendleft(board.copy())
+            else:
+                self._board.appendleft(np.zeros_like(board))
 
-        return board.copy()
+        return self._queue_to_board()
+
+    def _get_food(self):
+        '''
+        find the coordinates of the point to put the food at
+        first randomly locate a row to put the food in, then remove all
+        the cells with snake and choose amongst the remaining
+        '''
+
+        while(1):
+            food_x, food_y = list(range(self._size)), list(range(self._size))
+            food_x = np.random.choice(food_x, 1)[0]
+            for i in range(self._size):
+                if(self._board[0][food_x, i] == self._value['snake']):
+                    food_y.remove(i)
+            if(len(food_y) == 0):
+                continue
+            else:
+                food_y = np.random.choice(food_y, 1)[0]
+                break
+        self._food = Position(food_x, food_y)
+        self._put_food()
+
+    def _put_food(self):
+        ''' put the food in the required spot '''
+        self._board[0][self._food.row, self._food.col] = self._value['food']
 
     def step(self, action):
         '''
@@ -110,5 +143,5 @@ class Snake:
             done : 1 if ended else 0
         '''
         done = 0
-        
+
         return done
