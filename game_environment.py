@@ -39,15 +39,18 @@ class Snake:
         snake_head (int, int) : Position containing the row and column no of board
                                 for snake head
         food (int, int) : Position containing the coordinates for the food
+        snake_direction (int) : direction (left:2, right:0, up:1, down:3) where
+                                   snake is moving
     '''
     def __init__(self, board_size = 10, start_length = 5, seed = 42):
         '''
         Initialization function for the environment.
         '''
         self._value = {'snake':10, 'board':0, 'food':5}
-        self._actions = {0:'none', 1:'left', 2:'right'}
+        self._actions = {0:'none', 1:'left', -1:'right'}
         self._size = board_size
         self._n_frames = 4
+        self._reward = {'out':-100, 'food':10, 'time':0}
         # set numpy seed for reproducible results
         np.random.seed(seed)
         # initialize other parameters
@@ -87,6 +90,7 @@ class Snake:
             else:
                 self._board.appendleft(np.zeros_like(board))
 
+        self._snake_direction = 0
         return self._queue_to_board()
 
     def _get_food(self):
@@ -114,6 +118,15 @@ class Snake:
         ''' put the food in the required spot '''
         self._board[0][self._food.row, self._food.col] = self._value['food']
 
+    def _get_new_direction(self, action):
+        '''
+        get the new direction after taking the specified action
+        Returns:
+            direction (int) : the new direction of motion
+        '''
+        direction = (self._snake_direction + action)%4
+        return direction
+
     def step(self, action):
         '''
         takes an action and performs one time step of the game, returns updated
@@ -130,6 +143,12 @@ class Snake:
         reward, done = 0, 0
 
         # check if the current action is feasible
+        reward, done = self._check_if_done(action)
+        if(done == 0):
+            # if not done, move the snake
+            self._move_snake(action)
+            # update the direction of motion
+            self._snake_direction = self._get_new_direction(action)
 
         # for now, assume info is none
         info = None
@@ -138,10 +157,37 @@ class Snake:
 
     def _check_if_done(self, action):
         '''
-        checks if the game has ended or not
+        checks if the game has ended or if food has been taken
         Returns:
             done : 1 if ended else 0
         '''
-        done = 0
+        reward, done = self._reward['time'], 0
+        # check if the current action forces snake out of board
+        new_dir  = self._get_new_direction(action)
+        del_x, del_y = (new_dir%2)*(new_dir-2), (1-(new_dir%2))*(1-new_dir)
+        new_head = Position(self._snake_head.row + del_x,
+                            self._snake_head.col + del_y)
+        while(1):
+            # snake is outside the board
+            if(new_head.row < 0 or self._size <= new_head.row):
+                done = 1
+                reward = self._reward['out']
+                break
+            if(new_head.col < 0 or self._size <= new_head.col):
+                done = 1
+                reward = self._reward['out']
+                break
+            # colision with self
+            if(self._board[0][new_head.row, new_head.col] == self._value['snake']):
+                done = 1
+                reward = self._reward['out']
+                break
+            # check if food
+            if(self._board[0][new_head.row, new_head.col] == self._value['food']):
+                done = 0
+                reward = self._reward['food']
+                break
+        return reward, done
 
-        return done
+    def _move_snake(self, action):
+        
