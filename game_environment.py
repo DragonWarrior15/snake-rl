@@ -41,6 +41,7 @@ class Snake:
         food (int, int) : Position containing the coordinates for the food
         snake_direction (int) : direction (left:2, right:0, up:1, down:3) where
                                    snake is moving
+        snake (queue) : a queue to store the positions of the snake body
     '''
     def __init__(self, board_size = 10, start_length = 5, seed = 42):
         '''
@@ -77,6 +78,7 @@ class Snake:
         '''
         board = np.zeros(self._size ** 2)
         self._snake_head = Position(self._size//2, 0 + self._snake_length)
+        self._snake = deque()
         # modify the board values for the snake, assumed to be lying horizontally initially
         for i in range(self._snake_length):
             board[5, i] = self._value['snake']
@@ -190,4 +192,7 @@ class Snake:
         return reward, done
 
     def _move_snake(self, action):
-        
+        '''
+        moves the snake using the given action
+        updates the board accordingly
+        '''
