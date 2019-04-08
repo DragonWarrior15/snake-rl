@@ -44,7 +44,7 @@ class Snake:
                                    snake is moving
         snake (queue) : a queue to store the positions of the snake body
     '''
-    def __init__(self, board_size = 10, start_length = 5, seed = 42):
+    def __init__(self, board_size=10, start_length=5, seed=42):
         '''
         Initialization function for the environment.
         '''
