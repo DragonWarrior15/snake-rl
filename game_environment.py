@@ -81,7 +81,6 @@ class Snake:
             board : the current board state
         '''
         board = self._value['board'] * np.ones((self._size, self._size))
-        self._snake_head = Position(self._size//2, 0 + self._snake_length)
         self._snake = deque()
         # modify the board values for the snake, assumed to be lying horizontally initially
         for i in range(self._snake_length):
@@ -99,6 +98,14 @@ class Snake:
         self._get_food()
         self._snake_direction = 0
         return self._queue_to_board()
+
+    def _get_snake_head(self):
+        '''
+        get the head of the snake, right most element in the queue
+        Returns:
+            head : Position of the head
+        '''
+        return self._snake[-1]
 
     def _get_food(self):
         '''
@@ -142,8 +149,11 @@ class Snake:
         '''
         new_dir  = self._get_new_direction(action, current_direction)
         del_x, del_y = (new_dir%2)*(new_dir-2), (1-(new_dir%2))*(1-new_dir)
-        new_head = Position(self._snake_head.row + del_x,
-                            self._snake_head.col + del_y)
+        print(del_x, del_y)
+        snake_head = self._get_snake_head()
+        new_head = Position(snake_head.row + del_x,
+                            snake_head.col + del_y)
+        print(new_head.row, new_head.col)
         return new_head
 
     def step(self, action):
