@@ -9,6 +9,7 @@ Important to manually reset the environment by user after initialization.
 
 import numpy as np
 from collections import deque
+import matplotlib.pyplot as plt
 
 class Position:
     '''
@@ -47,7 +48,7 @@ class Snake:
         '''
         Initialization function for the environment.
         '''
-        self._value = {'snake':10, 'board':0, 'food':5}
+        self._value = {'snake':0, 'board':255, 'food':128}
         self._actions = {0:'none', 1:'left', -1:'right'}
         self._size = board_size
         self._n_frames = 4
@@ -66,9 +67,12 @@ class Snake:
         board = np.dstack([x for x in self._board])
         return board.copy()
 
-    def _print_game():
+    def print_game(self):
         ''' prints the current state (board) '''
-        pass
+        fig, axs = plt.subplots(1, self._n_frames)
+        for i in range(self._n_frames):
+            axs[i].imshow(self._board[i], cmap = 'gray')
+        plt.show()
 
     def reset(self):
         '''
@@ -76,25 +80,41 @@ class Snake:
         Returns:
             board : the current board state
         '''
-        board = np.zeros(self._size ** 2)
-        self._snake_head = Position(self._size//2, 0 + self._snake_length)
+        board = self._value['board'] * np.ones((self._size, self._size))
         self._snake = deque()
         # modify the board values for the snake, assumed to be lying horizontally initially
         for i in range(self._snake_length):
             board[5, i] = self._value['snake']
-            self._snake.append(Point(5, i))
-        # modify the food position on the board
-        self._get_food()
+            self._snake.append(Position(5, i))
         # queue, left most entry is the latest frame
-        self._board = deque(self._n_frames)
+        self._board = deque(maxlen = self._n_frames)
         for i in range(self._n_frames):
             if(i == 0):
                 self._board.append(board.copy())
             else:
-                self._board.append(np.zeros_like(board))
+                self._board.append((self._value['board'] * np.ones_like(board)).copy())
 
+        # modify the food position on the board, after board queue initialized
+        self._get_food()
         self._snake_direction = 0
         return self._queue_to_board()
+
+    def _get_snake_head(self):
+        '''
+        get the head of the snake, right most element in the queue
+        Returns:
+            head : Position of the head
+        '''
+        return self._snake[-1]
+
+    def _get_snake_tail(self):
+        '''
+        get the head of the snake, right most element in the queue
+        Returns:
+        head : Position of the head
+        '''
+        return self._snake[0]
+
 
     def _get_food(self):
         '''
@@ -138,8 +158,9 @@ class Snake:
         '''
         new_dir  = self._get_new_direction(action, current_direction)
         del_x, del_y = (new_dir%2)*(new_dir-2), (1-(new_dir%2))*(1-new_dir)
-        new_head = Position(self._snake_head.row + del_x,
-                            self._snake_head.col + del_y)
+        snake_head = self._get_snake_head()
+        new_head = Position(snake_head.row + del_x,
+                            snake_head.col + del_y)
         return new_head
 
     def step(self, action):
@@ -163,12 +184,15 @@ class Snake:
             # if not done, move the snake
             self._move_snake(action, can_eat_food)
             # update the direction of motion
-            self._snake_direction = self._get_new_direction(action)
+            self._snake_direction = self._get_new_direction(action, self._snake_direction)
+            # get the next food location
+            if(can_eat_food):
+                self._get_food()
 
         # for now, assume info is none
         info = None
 
-        return self._board.copy(), reward, done, info
+        return self._queue_to_board(), reward, done, info
 
     def _check_if_done(self, action):
         '''
@@ -191,8 +215,10 @@ class Snake:
                 done = 1
                 reward = self._reward['out']
                 break
-            # colision with self
-            if(self._board[0][new_head.row, new_head.col] == self._value['snake']):
+            # collision with self, collision with tail is allowed
+            snake_tail = self._get_snake_tail()
+            if(self._board[0][new_head.row, new_head.col] == self._value['snake']
+               and not(new_head.row == snake_tail.row and new_head.col == snake_tail.col)):
                 done = 1
                 reward = self._reward['out']
                 break
@@ -202,9 +228,11 @@ class Snake:
                 reward = self._reward['food']
                 can_eat_food = 1
                 break
+            # if normal movement, no other updates needed
+            break
         return reward, done, can_eat_food
 
-    def _move_snake(self, action):
+    def _move_snake(self, action, can_eat_food):
         '''
         moves the snake using the given action
         and updates the board accordingly
@@ -216,11 +244,14 @@ class Snake:
         # insert the new head into the snake queue
         # different treatment for addition of food
         # update the new board view as well
+        # if new head overlaps with the tail, special handling is needed
         self._snake.append(new_head)
-        new_board[new_board.row, new_board.col] = self._value['snake']
         if(can_eat_food):
             self._snake_length += 1
         else:
             delete_pos = self._snake.popleft()
             new_board[delete_pos.row, delete_pos.col] = self._value['board']
-        
+        # update head position in last so that if head is same as tail, updation
+        # is still correct
+        new_board[new_head.row, new_head.col] = self._value['snake']
+        self._board.appendleft(new_board.copy())
