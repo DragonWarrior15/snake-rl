@@ -10,7 +10,7 @@ class ReplayBuffer:
     '''
     def __init__(self, buffer_size = 10000):
         ''' initialize the buffer with given size '''
-        self._buffer = deque(maxlen = 10000)
+        self._buffer = deque(maxlen = buffer_size)
         self._buffer_size = buffer_size
 
     def add_to_buffer(self, data):
@@ -26,8 +26,24 @@ class ReplayBuffer:
             r (int) : list of rewards
             done (int) : if the game was completed
         '''
-        sample_indices = np.random.choice(list(range(len(self._buffer))), size)
-        s, a, r, done = [], [], [], []
+        buffer_size = len(self._buffer)
+        size = min(size, buffer_size)
+        p = (1.0*size)/buffer_size
         # sample size will be smaller than buffer size, hence traverse queue once
-        for i in sample_indices:
-            d =
+        sample_data = []
+        for x in self._buffer:
+            if(np.random.random() < p):
+                sample_data.append(x)
+        np.random.shuffle(sample_data)
+        s, a, r, done = [], [], [], []
+        for x in sample_data:
+            s.append(x[0])
+            a.append(x[1])
+            r.append(x[2])
+            done.append(x[3])
+        s = np.array(s)
+        a = np.array(a).reshape(-1, 1)
+        r = np.array(r).reshape(-1, 1)
+        done = np.array(done).reshape(-1, 1)
+
+        return s, a, r, done
