@@ -107,6 +107,15 @@ class Snake:
         '''
         return self._snake[-1]
 
+    def _get_snake_tail(self):
+        '''
+        get the head of the snake, right most element in the queue
+        Returns:
+        head : Position of the head
+        '''
+        return self._snake[0]
+
+
     def _get_food(self):
         '''
         find the coordinates of the point to put the food at
@@ -149,11 +158,9 @@ class Snake:
         '''
         new_dir  = self._get_new_direction(action, current_direction)
         del_x, del_y = (new_dir%2)*(new_dir-2), (1-(new_dir%2))*(1-new_dir)
-        print(del_x, del_y)
         snake_head = self._get_snake_head()
         new_head = Position(snake_head.row + del_x,
                             snake_head.col + del_y)
-        print(new_head.row, new_head.col)
         return new_head
 
     def step(self, action):
@@ -208,8 +215,10 @@ class Snake:
                 done = 1
                 reward = self._reward['out']
                 break
-            # colision with self
-            if(self._board[0][new_head.row, new_head.col] == self._value['snake']):
+            # collision with self, collision with tail is allowed
+            snake_tail = self._get_snake_tail()
+            if(self._board[0][new_head.row, new_head.col] == self._value['snake']
+               and not(new_head.row == snake_tail.row and new_head.col == snake_tail.col)):
                 done = 1
                 reward = self._reward['out']
                 break
@@ -235,11 +244,14 @@ class Snake:
         # insert the new head into the snake queue
         # different treatment for addition of food
         # update the new board view as well
+        # if new head overlaps with the tail, special handling is needed
         self._snake.append(new_head)
-        new_board[new_head.row, new_head.col] = self._value['snake']
         if(can_eat_food):
             self._snake_length += 1
         else:
             delete_pos = self._snake.popleft()
             new_board[delete_pos.row, delete_pos.col] = self._value['board']
+        # update head position in last so that if head is same as tail, updation
+        # is still correct
+        new_board[new_head.row, new_head.col] = self._value['snake']
         self._board.appendleft(new_board.copy())
