@@ -53,10 +53,9 @@ class Snake:
         self._size = board_size
         self._n_frames = 4
         self._reward = {'out':-100, 'food':10, 'time':0}
+        self._start_length = start_length
         # set numpy seed for reproducible results
         np.random.seed(seed)
-        # initialize other parameters
-        self._snake_length = start_length
 
     def _queue_to_board(self):
         '''
@@ -82,6 +81,7 @@ class Snake:
         '''
         board = self._value['board'] * np.ones((self._size, self._size))
         self._snake = deque()
+        self._snake_length = self._start_length
         # modify the board values for the snake, assumed to be lying horizontally initially
         for i in range(self._snake_length):
             board[5, i] = self._value['snake']

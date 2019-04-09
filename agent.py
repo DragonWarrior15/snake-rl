@@ -18,17 +18,23 @@ class QLearningAgent():
         buffer_size (int): size of the replay buffer
         buffer (queue): replay buffer
         n_actions (int): no of actions available in the action space
+        actions (list): list of possible actions that can be taken
         epsilon (float): for epsilon greedy policy
+        gamma (float): for reward discounting
         use_target_net (bool): if to keep two networks for learning
+        input_shape (tuple): shape of input tensor
     '''
     def __init__(self, board_size=10, frames=4, buffer_size=10000,
-                 epsilon=0.01, n_actions=3, use_target_net=True):
+                 epsilon=0.01, gamma = 0.9, n_actions=3, use_target_net=True):
         self._board_size = board_size
         self._n_frames = frames
         self._buffer_size = buffer_size
         self._n_actions = n_actions
+        self._actions = [-1, 0, 1]
         self._epsilon = epsilon
+        self._gamma = gamma
         self._use_target_net = use_target_net
+        self._input_shape = (self._board_size, self._board_size, self._n_frames)
         self.reset_buffer()
         self.reset_models()
 
@@ -41,18 +47,14 @@ class QLearningAgent():
     def reset_models(self):
         ''' reset all the current models '''
         self._model_train, self._model_pred = self._agent_models()
+        if(self._use_target_net):
+            _, self._target_net = self._agent_models()
+            self.update_target_net()
 
     def _action_map(self, action):
         ''' convert integer output to -1, 0 or 1 '''
         assert action in [0, 1, 2], "error! network output size should be 3"
-        return [-1, 0, 1][i]
-
-        self._input_shape = (self._board_size, self._board_size, 1)
-        self._model_train, self._model_pred = self.agent_model()
-        self._use_target_net = use_target_net
-        if(use_target_net):
-            _, self._target_net = self.agent_model()
-            self.update_target_net()
+        return self._actions[action]
 
     def get_epsilon(self):
         return self._epsilon
@@ -60,22 +62,22 @@ class QLearningAgent():
     def set_epsilon(self, epsilon):
         self._epsilon = epsilon
 
-    # get action value
     def _get_qvalues(self, board, model=None):
-        # board is assumed to be a list
+        ''' get action value '''
         if model is None:
             model = self._model_pred
-        q_values = model.predict(board)
+        q_values = model.predict(board.reshape((1,) + self._input_shape))
         return q_values
 
-    # get the action using epsilon greedy policy
     def move(self, board):
+        ''' get the action using epsilon greedy policy '''
         if(np.random.random() <= self._epsilon):
             action = int(np.random.choice(list(range(self._n_actions)), 1)[0])
         else:
-            q_values = self._get_qvalues(board.reshape(1, self._board_size,
-                                self._board_size, self._n_frames), self._model_pred)
+            q_values = self._get_qvalues(board.reshape((1,) + self._input_shape),
+                                        self._model_pred)
             action = int(np.argmax(q_values))
+        action = self._action_map(action)
         return action
 
     def _agent_models(self):
@@ -125,7 +127,7 @@ class QLearningAgent():
         except FileNotFoundError:
             print("Couldn't locate models at {}, check provided path".format(file_path))
 
-    def print_model(self):
+    def print_models(self):
         ''' print the current models '''
         print('Training Model')
         print(self._model_train.summary())
@@ -144,7 +146,7 @@ class QLearningAgent():
                      np.max(self._get_qvalues(next_board, current_model))
 
         # one hot encoding to convert the discounted rewards
-        one_hot_action = np.zeros((1, self._board_size))
+        one_hot_action = np.zeros((1, self._n_actions))
         one_hot_action[0, action] = 1
 
         '''
@@ -165,8 +167,8 @@ class QLearningAgent():
             error (float) : the current mse
         '''
         s, a, r, done = self._buffer.sample(sample_size)
-        self._model_train.fit([s, a], r, epochs = epochs, verbose = verbose)
-        return self._model_train.evaluate([s, a], r)
+        self._model_train.fit([s, a], r, epochs=epochs, verbose=verbose)
+        return self._model_train.evaluate([s, a], r, verbose=verbose)
 
     def update_target_net(self):
         '''

@@ -42,7 +42,7 @@ class ReplayBuffer:
             r.append(x[2])
             done.append(x[3])
         s = np.array(s)
-        a = np.array(a).reshape(-1, 1)
+        a = np.concatenate(a, axis=0)
         r = np.array(r).reshape(-1, 1)
         done = np.array(done).reshape(-1, 1)
 
