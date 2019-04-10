@@ -66,7 +66,9 @@ class QLearningAgent():
         ''' get action value '''
         if model is None:
             model = self._model_pred
-        q_values = model.predict(board.reshape((1,) + self._input_shape))
+        if(board.ndim == 3):
+            board = board.reshape((1,) + self._input_shape)
+        q_values = model.predict(board)
         return q_values
 
     def move(self, board):
@@ -160,7 +162,30 @@ class QLearningAgent():
         '''
         self._buffer.add_to_buffer([board, one_hot_action, discounted_reward, done])
 
-    def train_agent(self, sample_size=10000, epochs=10, verbose=0):
+    def add_to_buffer_batch(self, boards, next_boards, rewards, actions, dones):
+        '''
+        similar to add to buffer function, but does this for a whole batch
+        this can save time by reducing repeated calls to agent model
+        inputs are assumed to be insances of deque
+        '''
+        # convert the input variables to numpy arrays
+        boards = np.array(boards)
+        next_boards = np.array(next_boards)
+        rewards = np.array(rewards).reshape(-1, 1)
+        one_hot_actions = np.zeros((len(actions), self._n_actions))
+        one_hot_actions[np.arange(len(actions)), actions] = 1
+        not_dones = 1 - np.array(dones).reshape(-1, 1)
+
+        # run the model to get predicted rewards
+        current_model = self._target_net if self._use_target_net else self._model_pred
+        discounted_rewards = rewards + (self._gamma * np.max(self._get_qvalues(next_boards, current_model), axis = 1)) * not_dones
+
+        # add to buffer
+        for i in range(len(rewards)):
+            x = [boards[i].copy(), one_hot_actions[i].reshape(1, self._n_actions), discounted_rewards[i][0], dones[i]]
+            self._buffer.add_to_buffer(x)
+
+    def train_agent(self, sample_size=1000, epochs=10, verbose=0):
         '''
         train the model by sampling from buffer and return the error
         Returns:
