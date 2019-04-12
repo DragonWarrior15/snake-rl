@@ -5,6 +5,8 @@ The environment state is a set of frames, we want the agent to be able to discer
 the movement of the snake as well for which multiple frames are needed.
 We will keep track of a history of 4 frames.
 Important to manually reset the environment by user after initialization.
+The board borders are different from board color
+The player cannot play infinitely, and hence max time limit is imposed
 '''
 
 import numpy as np
@@ -44,18 +46,21 @@ class Snake:
                                    snake is moving
         snake (queue) : a queue to store the positions of the snake body
     '''
-    def __init__(self, board_size=10, frames=4, start_length=5, seed=42):
+    def __init__(self, board_size=11, frames=4, start_length=4, seed=42):
         '''
         Initialization function for the environment.
         '''
-        self._value = {'snake':255, 'board':0, 'food':128, 'head':180}
+        self._value = {'snake':255, 'board':0, 'food':128, 'head':180, 'border':80}
         self._actions = {0:'none', 1:'left', -1:'right'}
-        self._size = board_size
+        self._board_size = board_size
         self._n_frames = frames
-        self._reward = {'out':-100, 'food':10, 'time':0}
-        self._start_length = start_length
+        self._reward = {'out':-10, 'food':10, 'time':1}
+        # start length is constrained to be less than half of board size
+        self._start_length = min(start_length, (board_size-2)//2)
         # set numpy seed for reproducible results
         np.random.seed(seed)
+        # time limit to contain length of game
+        self._max_time_limit = 50
 
     def _queue_to_board(self):
         '''
@@ -79,11 +84,17 @@ class Snake:
         Returns:
             board : the current board state
         '''
-        board = self._value['board'] * np.ones((self._size, self._size))
+        board = self._value['board'] * np.ones((self._board_size, self._board_size))
+        # make board borders
+        board[:, 0] = self._value['border']
+        board[:, self._board_size-1] = self._value['border']
+        board[0, :] = self._value['border']
+        board[self._board_size-1, :] = self._value['border']
+        # initialize snake
         self._snake = deque()
         self._snake_length = self._start_length
         # modify the board values for the snake, assumed to be lying horizontally initially
-        for i in range(self._snake_length):
+        for i in range(1, self._snake_length+1):
             board[5, i] = self._value['snake']
             self._snake.append(Position(5, i))
         # modify the snakek head position
@@ -100,6 +111,8 @@ class Snake:
         # modify the food position on the board, after board queue initialized
         self._get_food()
         self._snake_direction = 0
+        # set time elapsed to 0
+        self._time = 0
         return self._queue_to_board()
 
     def _get_snake_head(self):
@@ -118,19 +131,18 @@ class Snake:
         '''
         return self._snake[0]
 
-
     def _get_food(self):
         '''
         find the coordinates of the point to put the food at
         first randomly locate a row to put the food in, then remove all
         the cells with snake and choose amongst the remaining
+        since board has borders, food cannot be at them
         '''
-
         while(1):
-            food_x, food_y = list(range(self._size)), list(range(self._size))
+            food_x, food_y = list(range(1,self._board_size-1)), list(range(1,self._board_size-1))
             food_x = np.random.choice(food_x, 1)[0]
-            for i in range(self._size):
-                if(self._board[0][food_x, i] == self._value['snake']):
+            for i in range(1,self._board_size-1):
+                if(self._board[0][food_x, i] != self._value['board']):
                     food_y.remove(i)
             if(len(food_y) == 0):
                 continue
@@ -192,8 +204,11 @@ class Snake:
             if(can_eat_food):
                 self._get_food()
 
-        # for now, assume info is none
-        info = None
+        # info contains time elapsed
+        info = {'time':self._time}
+
+        # update time
+        self._time += 1
 
         return self._queue_to_board(), reward, done, info
 
@@ -209,15 +224,17 @@ class Snake:
         # check if the current action forces snake out of board
         new_head = self._get_new_head(action, self._snake_direction)
         while(1):
-            # snake is outside the board
-            if(new_head.row < 0 or self._size <= new_head.row):
-                done = 1
-                reward = self._reward['out']
-                break
-            if(new_head.col < 0 or self._size <= new_head.col):
-                done = 1
-                reward = self._reward['out']
-                break
+            # snake is colliding with border/obstacles
+            try:
+                if(self._board[0][new_head.row, new_head.col] == self._value['border']):
+                    done = 1
+                    reward = self._reward['out']
+                    break
+            except IndexError:
+                # for debug
+                print(self._board[0][:,:])
+                print(self._board[1][:,:])
+                print(new_head.row, new_head.col)
             # collision with self, collision with tail is allowed
             snake_tail = self._get_snake_tail()
             if(self._board[0][new_head.row, new_head.col] == self._value['snake']
@@ -228,8 +245,12 @@ class Snake:
             # check if food
             if(self._board[0][new_head.row, new_head.col] == self._value['food']):
                 done = 0
-                reward = self._reward['food']
+                reward += self._reward['food']
                 can_eat_food = 1
+                break
+            # check if time is up
+            if(self._time >= self._max_time_limit):
+                done = 1
                 break
             # if normal movement, no other updates needed
             break

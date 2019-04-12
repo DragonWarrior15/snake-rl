@@ -10,7 +10,7 @@ from collections import deque
 from pandas import ewma
 
 # some global variables
-board_size = 10
+board_size = 11
 frames = 4
 
 def play_game(env, agent, n_games=100, record=True,
@@ -50,7 +50,7 @@ s = env.reset()
 
 # setup the agent
 K.clear_session()
-agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=100000)
+agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=10000)
 # agent.print_models()
 
 # setup the epsilon range and decay rate for epsilon
@@ -61,14 +61,14 @@ decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
 # play some games initially and train the model
 agent.set_epsilon(epsilon)
-_ = play_game(env, agent, n_games=1000, record=True, verbose=True)
+_ = play_game(env, agent, n_games=500, record=True, verbose=True)
 _ = agent.train_agent()
 
 rewards_history = []
 # training loop
 for index in tqdm(range(episodes)):
-    _ = play_game(env, agent, n_games=1000, record=True)
-    _ = agent.train_agent(sample_size=10000, epochs=20)
+    _ = play_game(env, agent, n_games=500, record=True)
+    _ = agent.train_agent(sample_size=2000, epochs=20)
 
     # keep track of agent rewards_history
     agent.set_epsilon(0)
