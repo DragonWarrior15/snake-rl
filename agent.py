@@ -96,9 +96,10 @@ class QLearningAgent():
         input_board = Input((self._board_size, self._board_size, self._n_frames,))
         input_action = Input((self._n_actions,))
         # total rows + columns + diagonals is total units
-        x = Conv2D(64, (5,5), activation = 'relu')(input_board)
+        x = Conv2D(64, (3,3), activation = 'relu')(input_board)
         x = Conv2D(128, (3,3), activation = 'relu')(x)
         x = Flatten()(x)
+        x = Dense(64, activation = 'linear')(x)
         x = Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
         x = Multiply()([input_action, x])
         out = Lambda(lambda x: K.sum(x, axis = 1), output_shape = (1,))(x)
