@@ -48,7 +48,7 @@ class Snake:
         '''
         Initialization function for the environment.
         '''
-        self._value = {'snake':0, 'board':255, 'food':128}
+        self._value = {'snake':255, 'board':0, 'food':128, 'head':180}
         self._actions = {0:'none', 1:'left', -1:'right'}
         self._size = board_size
         self._n_frames = frames
@@ -86,6 +86,9 @@ class Snake:
         for i in range(self._snake_length):
             board[5, i] = self._value['snake']
             self._snake.append(Position(5, i))
+        # modify the snakek head position
+        head = self._get_snake_head()
+        board[head.row, head.col] = self._value['head']
         # queue, left most entry is the latest frame
         self._board = deque(maxlen = self._n_frames)
         for i in range(self._n_frames):
@@ -241,11 +244,16 @@ class Snake:
         new_head = self._get_new_head(action, self._snake_direction)
         # prepare new board as the last frame
         new_board = self._board[0].copy()
+        # modify the next block of the snake body to be same color as snake
+        temp_neck = self._snake.pop()
+        new_board[temp_neck.row, temp_neck.col] = self._value['snake']
+        self._snake.append(temp_neck)
         # insert the new head into the snake queue
         # different treatment for addition of food
         # update the new board view as well
         # if new head overlaps with the tail, special handling is needed
         self._snake.append(new_head)
+
         if(can_eat_food):
             self._snake_length += 1
         else:
@@ -253,5 +261,5 @@ class Snake:
             new_board[delete_pos.row, delete_pos.col] = self._value['board']
         # update head position in last so that if head is same as tail, updation
         # is still correct
-        new_board[new_head.row, new_head.col] = self._value['snake']
+        new_board[new_head.row, new_head.col] = self._value['head']
         self._board.appendleft(new_board.copy())

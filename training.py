@@ -80,8 +80,8 @@ for index in tqdm(range(episodes)):
 
     # copy weights to target network
     # save models
-    if((index+1)%50 == 0):
+    if((index+1)%20 == 0):
         agent.update_target_net()
-        agent.save_model(file_path='models/')
+        agent.save_model(file_path='models/', iteration=(index+1))
 
     epsilon *= decay
