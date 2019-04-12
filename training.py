@@ -50,31 +50,32 @@ s = env.reset()
 
 # setup the agent
 K.clear_session()
-agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=10000)
+agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=20000)
 # agent.print_models()
 
 # setup the epsilon range and decay rate for epsilon
 epsilon = 0.9
 epsilon_end = 0.01
-episodes = 500
+episodes = 1000
 decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
 # play some games initially and train the model
 agent.set_epsilon(epsilon)
-_ = play_game(env, agent, n_games=500, record=True, verbose=True)
-_ = agent.train_agent()
+_ = play_game(env, agent, n_games=1000, record=True, verbose=True)
+_ = agent.train_agent(sample_size=5000, epochs=20)
 
 rewards_history = []
 # training loop
 for index in tqdm(range(episodes)):
-    _ = play_game(env, agent, n_games=500, record=True)
-    _ = agent.train_agent(sample_size=2000, epochs=20)
+    _ = play_game(env, agent, n_games=50, record=True)
+    _ = agent.train_agent(sample_size=5000, epochs=20)
 
     # keep track of agent rewards_history
     agent.set_epsilon(0)
-    rewards_history.append(np.mean(play_game(env, agent,
-                                        n_games=100, record=False)))
-    print('Current MA Reward : {:.2f}'.format(rewards_history[-1]))
+    current_rewards = play_game(env, agent, n_games=50, record=False)
+    rewards_history.append(np.mean(current_rewards))
+    print('Current Reward mean, dev: {:.2f}, {:.3f}'.\
+                    format(np.mean(current_rewards), np.std(current_rewards)))
     # ewma(np.array(rewards_history), span=20, min_periods=20)
     agent.set_epsilon(epsilon)
 
