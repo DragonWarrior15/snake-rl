@@ -68,8 +68,13 @@ class QLearningAgent():
             model = self._model_pred
         if(board.ndim == 3):
             board = board.reshape((1,) + self._input_shape)
+            board = self._normalize_board(board.copy())
         q_values = model.predict(board)
         return q_values
+
+    def _normalize_board(self, board):
+        ''' normalize the board before input to the network '''
+        return((board/128.0 - 1).copy())
 
     def move(self, board):
         ''' get the action using epsilon greedy policy '''
@@ -192,6 +197,7 @@ class QLearningAgent():
             error (float) : the current mse
         '''
         s, a, r, done = self._buffer.sample(sample_size)
+        s = self._normalize_board(s.copy())
         self._model_train.fit([s, a], r, epochs=epochs, verbose=verbose)
         return self._model_train.evaluate([s, a], r, verbose=verbose)
 
