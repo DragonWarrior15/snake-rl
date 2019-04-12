@@ -11,6 +11,7 @@ from pandas import ewma
 
 # some global variables
 board_size = 10
+frames = 4
 
 def play_game(env, agent, n_games=100, record=True,
               verbose=False):
@@ -44,12 +45,12 @@ def play_game(env, agent, n_games=100, record=True,
     return rewards
 
 # setup the environment
-env = Snake(board_size=board_size)
+env = Snake(board_size=board_size, frames=frames)
 s = env.reset()
 
 # setup the agent
 K.clear_session()
-agent = QLearningAgent(board_size=board_size, frames=4)
+agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=100000)
 # agent.print_models()
 
 # setup the epsilon range and decay rate for epsilon
@@ -66,8 +67,8 @@ _ = agent.train_agent()
 rewards_history = []
 # training loop
 for index in tqdm(range(episodes)):
-    _ = play_game(env, agent, n_games=500, record=True)
-    _ = agent.train_agent()
+    _ = play_game(env, agent, n_games=1000, record=True)
+    _ = agent.train_agent(sample_size=10000, epochs=20)
 
     # keep track of agent rewards_history
     agent.set_epsilon(0)

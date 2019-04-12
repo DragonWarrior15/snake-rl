@@ -44,14 +44,14 @@ class Snake:
                                    snake is moving
         snake (queue) : a queue to store the positions of the snake body
     '''
-    def __init__(self, board_size=10, start_length=5, seed=42):
+    def __init__(self, board_size=10, frames=4, start_length=5, seed=42):
         '''
         Initialization function for the environment.
         '''
         self._value = {'snake':0, 'board':255, 'food':128}
         self._actions = {0:'none', 1:'left', -1:'right'}
         self._size = board_size
-        self._n_frames = 4
+        self._n_frames = frames
         self._reward = {'out':-100, 'food':10, 'time':0}
         self._start_length = start_length
         # set numpy seed for reproducible results
