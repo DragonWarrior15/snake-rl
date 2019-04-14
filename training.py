@@ -19,8 +19,6 @@ def play_game(env, agent, n_games=100, record=True,
     function to play some games and return the rewards list
     '''
     rewards = []
-    buffer_add = {'s':deque(), 'next_s':deque(), 'r':deque(),
-                  'a':deque(), 'done':deque()}
     iterator = range(n_games)
     for _ in (tqdm(iterator) if verbose else iterator):
         rewards.append(0)
@@ -30,18 +28,9 @@ def play_game(env, agent, n_games=100, record=True,
             action = agent.move(s)
             next_s, reward, done, info = env.step(action)
             if(record):
-                # agent.add_to_buffer(s, next_s, reward, action, done)
-                buffer_add['s'].append(s.copy())
-                buffer_add['next_s'].append(next_s.copy())
-                buffer_add['r'].append(reward)
-                buffer_add['a'].append(action)
-                buffer_add['done'].append(done)
+                agent.add_to_buffer(s, action, reward, next_s, done)
             rewards[-1] += reward
             s = next_s.copy()
-    # batch add to the buffer
-    if(record):
-        agent.add_to_buffer_batch(buffer_add['s'], buffer_add['next_s'],
-                    buffer_add['r'], buffer_add['a'], buffer_add['done'])
     return rewards
 
 # setup the environment
