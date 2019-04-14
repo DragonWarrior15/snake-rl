@@ -51,7 +51,7 @@ epsilon = 0.9
 epsilon_end = 0.01
 episodes = 10**5
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
-decay = 0.99
+decay = 0.98
 
 # play some games initially and train the model
 agent.set_epsilon(epsilon)
@@ -82,6 +82,6 @@ for index in tqdm(range(episodes)):
     if((index+1)%500 == 0):
         agent.update_target_net()
         agent.save_model(file_path='models/', iteration=(index+1))
-    # keep some epsilon alive for training
-    epsilon = max(epsilon * decay, epsilon_end)
+        # keep some epsilon alive for training
+        epsilon = max(epsilon * decay, epsilon_end)
     agent.set_epsilon(epsilon)
