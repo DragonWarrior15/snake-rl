@@ -9,6 +9,16 @@ from keras.optimizers import Adam, SGD
 import keras.backend as K
 import numpy as np
 
+def huber_loss(y_true, y_pred, delta=1):
+    ''' keras implementation for huber loss '''
+    error = (y_true - y_pred)
+    if(K.abs(error) < delta):
+        # quadratic error
+        return K.mean(K.square(error), axis=-1)
+    else:
+        # linear error
+        return K.mean(delta*(K.abs(error) - 0.5*delta), axis=-1)
+
 class QLearningAgent():
     '''
     this agent learns the game via q learning
@@ -96,15 +106,16 @@ class QLearningAgent():
         input_board = Input((self._board_size, self._board_size, self._n_frames,))
         input_action = Input((self._n_actions,))
         # total rows + columns + diagonals is total units
-        x = Conv2D(64, (5,5), activation = 'relu')(input_board)
+        x = Conv2D(64, (3,3), activation = 'relu')(input_board)
         x = Conv2D(128, (3,3), activation = 'relu')(x)
         x = Flatten()(x)
+        x = Dense(64, activation = 'relu')(x)
         x = Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
         x = Multiply()([input_action, x])
         out = Lambda(lambda x: K.sum(x, axis = 1), output_shape = (1,))(x)
 
         model_train = Model(inputs = [input_board, input_action], outputs = out)
-        model_train.compile(optimizer = Adam(1e-4), loss = 'mean_squared_error')
+        model_train.compile(optimizer = Adam(1e-4, clipvalue=1.0), loss = 'mean_squared_error')
 
         model_pred = Model(inputs = input_board,
                            outputs = model_train.get_layer('action_values').output)
