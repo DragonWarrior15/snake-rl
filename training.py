@@ -31,8 +31,8 @@ def play_game(env, agent, n_games=100, record=True,
             next_s, reward, done, info = env.step(action)
             if(record):
                 # agent.add_to_buffer(s, next_s, reward, action, done)
-                buffer_add['s'].append(s)
-                buffer_add['next_s'].append(next_s)
+                buffer_add['s'].append(s.copy())
+                buffer_add['next_s'].append(next_s.copy())
                 buffer_add['r'].append(reward)
                 buffer_add['a'].append(action)
                 buffer_add['done'].append(done)
