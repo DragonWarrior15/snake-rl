@@ -1,6 +1,10 @@
 '''
 script for training the agent for snake using q learning
 '''
+# run on cpu
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+
 import keras.backend as K
 import numpy as np
 from agent import QLearningAgent
@@ -53,7 +57,7 @@ decay = 0.99
 agent.set_epsilon(epsilon)
 for i in range(3):
     _ = play_game(env, agent, n_games=1000//3, record=True, verbose=True)
-_ = agent.train_agent(sample_size=5000, epochs=20)
+# _ = agent.train_agent(sample_size=5000, epochs=20)
 
 rewards_history = []
 loss_history = []
@@ -62,7 +66,7 @@ for index in tqdm(range(episodes)):
     # make small changes to the buffer and slowly train
     _ = play_game(env, agent, n_games=5, record=True)
     loss_history.append(agent.train_agent(sample_size=128, epochs=1))
-
+    # check performance every once in a while
     if((index+1)%100 == 0):
         # keep track of agent rewards_history
         agent.set_epsilon(0)
@@ -74,12 +78,10 @@ for index in tqdm(range(episodes)):
         print('Current MA Reward mean : {:.2f}'.format(np.mean(rewards_history[-20:])))
         print('Current MA Loss mean : {:.3f}'.format(np.mean(loss_history[-20:])))
         # ewma(rewards_history, span=20, min_periods=20)
-
     # copy weights to target network and save models
     if((index+1)%500 == 0):
         agent.update_target_net()
         agent.save_model(file_path='models/', iteration=(index+1))
-
     # keep some epsilon alive for training
     epsilon = max(epsilon * decay, epsilon_end)
     agent.set_epsilon(epsilon)

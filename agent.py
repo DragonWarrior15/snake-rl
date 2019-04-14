@@ -85,7 +85,7 @@ class QLearningAgent():
             model = self._model_pred
         if(board.ndim == 3):
             board = board.reshape((1,) + self._input_shape)
-            board = self._normalize_board(board.copy())
+        board = self._normalize_board(board.copy())
         q_values = model.predict(board)
         return q_values
 
