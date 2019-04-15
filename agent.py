@@ -2,7 +2,7 @@
 store all the agents here
 '''
 from replay_buffer import ReplayBuffer
-from keras.models import Model, Sequential
+from keras.models import Model, Sequential, load_model
 from keras.layers import (Input, Conv2D, Dense,
         Flatten, Concatenate, Multiply, Lambda)
 from keras.optimizers import Adam, SGD

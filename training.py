@@ -12,30 +12,12 @@ from game_environment import Snake
 from tqdm import tqdm
 from collections import deque
 import pandas as pd
+from utils import play_game
 
 # some global variables
 board_size = 11
 frames = 4
 
-def play_game(env, agent, n_games=100, record=True,
-              verbose=False):
-    '''
-    function to play some games and return the rewards list
-    '''
-    rewards = []
-    iterator = range(n_games)
-    for _ in (tqdm(iterator) if verbose else iterator):
-        rewards.append(0)
-        s = env.reset()
-        done = 0
-        while(not done):
-            action = agent.move(s)
-            next_s, reward, done, info = env.step(action)
-            if(record):
-                agent.add_to_buffer(s, action, reward, next_s, done)
-            rewards[-1] += reward
-            s = next_s.copy()
-    return rewards
 
 # setup the environment
 env = Snake(board_size=board_size, frames=frames)
