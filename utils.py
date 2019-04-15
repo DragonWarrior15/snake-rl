@@ -22,7 +22,7 @@ def play_game(env, agent, n_games=100, record=True,
             s = next_s.copy()
     return rewards
 
-def visualize_game(env, agent, path='images/game_visual.png'):
+def visualize_game(env, agent, path='images/game_visual.png', debug=False):
     game_images = []
     time = []
     qvalues = []
@@ -32,13 +32,17 @@ def visualize_game(env, agent, path='images/game_visual.png'):
     while(not done):
         a = agent.move(s)
         next_s, r, done, info = env.step(a)
-        game_images.append(next_s[:,:,0].copy())
         qvalues.append(agent._get_qvalues(s)[0])
         time.append(info['time'])
+        game_images.append(next_s[:,:,0].copy())
         s = next_s.copy()
+        if(debug):
+            print(time[-1], qvalues[-1], a, r, done)
+    qvalues.append([0,0,0])
+    time.append(time[-1]+1)
     # plot the game
     ncols = 5
-    nrows = len(game_images)//ncols
+    nrows = len(game_images)//ncols + (1 if len(game_images)%ncols > 0 else 0)
     fig, axs = plt.subplots(nrows, ncols, figsize=(5*ncols, 5*nrows))
     for i in range(nrows):
         for j in range(ncols):

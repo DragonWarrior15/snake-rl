@@ -60,7 +60,7 @@ class Snake:
         # set numpy seed for reproducible results
         np.random.seed(seed)
         # time limit to contain length of game
-        self._max_time_limit = 50
+        self._max_time_limit = 48
 
     def _queue_to_board(self):
         '''
