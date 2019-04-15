@@ -9,6 +9,16 @@ from keras.optimizers import Adam, SGD
 import keras.backend as K
 import numpy as np
 
+def huber_loss(y_true, y_pred, delta=1):
+    ''' keras implementation for huber loss '''
+    error = (y_true - y_pred)
+    if(K.abs(error) < delta):
+        # quadratic error
+        return K.mean(K.square(error), axis=-1)
+    else:
+        # linear error
+        return K.mean(delta*(K.abs(error) - 0.5*delta), axis=-1)
+
 class QLearningAgent():
     '''
     this agent learns the game via q learning
@@ -56,6 +66,13 @@ class QLearningAgent():
         assert action in [0, 1, 2], "error! network output size should be 3"
         return self._actions[action]
 
+    def _inverse_action_map(self, action):
+        ''' convert action (-1, 0, 1) to action index (network output) '''
+        assert action in self._actions
+        for index, i in enumerate(self._actions):
+            if(i == action):
+                return index
+
     def get_epsilon(self):
         return self._epsilon
 
@@ -68,7 +85,7 @@ class QLearningAgent():
             model = self._model_pred
         if(board.ndim == 3):
             board = board.reshape((1,) + self._input_shape)
-            board = self._normalize_board(board.copy())
+        board = self._normalize_board(board.copy())
         q_values = model.predict(board)
         return q_values
 
@@ -96,15 +113,16 @@ class QLearningAgent():
         input_board = Input((self._board_size, self._board_size, self._n_frames,))
         input_action = Input((self._n_actions,))
         # total rows + columns + diagonals is total units
-        x = Conv2D(64, (5,5), activation = 'relu')(input_board)
+        x = Conv2D(64, (3,3), activation = 'relu')(input_board)
         x = Conv2D(128, (3,3), activation = 'relu')(x)
         x = Flatten()(x)
+        x = Dense(64, activation = 'relu')(x)
         x = Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
         x = Multiply()([input_action, x])
         out = Lambda(lambda x: K.sum(x, axis = 1), output_shape = (1,))(x)
 
         model_train = Model(inputs = [input_board, input_action], outputs = out)
-        model_train.compile(optimizer = Adam(1e-4), loss = 'mean_squared_error')
+        model_train.compile(optimizer = Adam(1e-4, clipvalue=1.0), loss = 'mean_squared_error')
 
         model_pred = Model(inputs = input_board,
                            outputs = model_train.get_layer('action_values').output)
@@ -143,52 +161,14 @@ class QLearningAgent():
         print('Target Network')
         print(self._target_net.summary())
 
-    def add_to_buffer(self, board, next_board, reward, action, done):
-        ''' add current game step to the replay buffer '''
-        if(done):
-            discounted_reward = reward
-        else:
-            current_model = self._target_net if self._use_target_net else self._model_pred
-            discounted_reward = reward + self._gamma * \
-                     np.max(self._get_qvalues(next_board, current_model))
-
-        # one hot encoding to convert the discounted rewards
-        one_hot_action = np.zeros((1, self._n_actions))
-        one_hot_action[0, action] = 1
-
+    def add_to_buffer(self, board, action, reward, next_board, done):
         '''
-        # use if want to over sample the states when game ends
-        add_times = 1
-        if(done and reward > 0):
-            add_times = 10
-        for _ in range(add_times):
-            self._buffer.add_data([board, move_type,
-            one_hot_action, discounted_reward])
+        add current game step to the replay buffer
+        also maps action back to one hot encoded version
         '''
-        self._buffer.add_to_buffer([board, one_hot_action, discounted_reward, done])
-
-    def add_to_buffer_batch(self, boards, next_boards, rewards, actions, dones):
-        '''
-        similar to add to buffer function, but does this for a whole batch
-        this can save time by reducing repeated calls to agent model
-        inputs are assumed to be insances of deque
-        '''
-        # convert the input variables to numpy arrays
-        boards = np.array(boards)
-        next_boards = np.array(next_boards)
-        rewards = np.array(rewards).reshape(-1, 1)
-        one_hot_actions = np.zeros((len(actions), self._n_actions))
-        one_hot_actions[np.arange(len(actions)), actions] = 1
-        not_dones = 1 - np.array(dones).reshape(-1, 1)
-
-        # run the model to get predicted rewards
-        current_model = self._target_net if self._use_target_net else self._model_pred
-        discounted_rewards = rewards + (self._gamma * np.max(self._get_qvalues(next_boards, current_model), axis = 1)) * not_dones
-
-        # add to buffer
-        for i in range(len(rewards)):
-            x = [boards[i].copy(), one_hot_actions[i].reshape(1, self._n_actions), discounted_rewards[i][0], dones[i]]
-            self._buffer.add_to_buffer(x)
+        one_hot_action = np.zeros((1, len(self._actions)))
+        one_hot_action[0, self._inverse_action_map(action)] = 1
+        self._buffer.add_to_buffer([board, one_hot_action, reward, next_board, done])
 
     def train_agent(self, sample_size=1000, epochs=10, verbose=0):
         '''
@@ -196,10 +176,15 @@ class QLearningAgent():
         Returns:
             error (float) : the current mse
         '''
-        s, a, r, done = self._buffer.sample(sample_size)
+        s, a, r, next_s, done = self._buffer.sample(sample_size)
+        # calculate the discounted reward, and then train accordingly
+        not_done = 1 - done
+        current_model = self._target_net if self._use_target_net else self._model_pred
+        discounted_reward = r + (self._gamma * np.max(self._get_qvalues(next_s, current_model), axis = 1).reshape(-1, 1)) * not_done
+        # normalize and train the model
         s = self._normalize_board(s.copy())
-        self._model_train.fit([s, a], r, epochs=epochs, verbose=verbose)
-        return self._model_train.evaluate([s, a], r, verbose=verbose)
+        self._model_train.fit([s, a], discounted_reward, epochs=epochs, verbose=verbose)
+        return self._model_train.evaluate([s, a], discounted_reward, verbose=verbose)
 
     def update_target_net(self):
         '''

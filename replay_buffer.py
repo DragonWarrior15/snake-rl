@@ -24,6 +24,7 @@ class ReplayBuffer:
             s (nd array) : the state matrix for input
             a (int) : list of actions taken
             r (int) : list of rewards
+            next_s (nd array) : the next state matrix for input
             done (int) : if the game was completed
         '''
         buffer_size = len(self._buffer)
@@ -35,15 +36,17 @@ class ReplayBuffer:
             if(np.random.random() < p):
                 sample_data.append(x)
         np.random.shuffle(sample_data)
-        s, a, r, done = [], [], [], []
+        s, a, r, next_s, done = [], [], [], [], []
         for x in sample_data:
             s.append(x[0])
             a.append(x[1])
             r.append(x[2])
-            done.append(x[3])
+            next_s.append(x[3])
+            done.append(x[4])
         s = np.array(s)
         a = np.concatenate(a, axis=0)
         r = np.array(r).reshape(-1, 1)
+        next_s = np.array(next_s)
         done = np.array(done).reshape(-1, 1)
-
-        return s, a, r, done
+        
+        return s, a, r, next_s, done
