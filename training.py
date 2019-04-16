@@ -63,7 +63,7 @@ for index in tqdm(range(episodes)):
     # copy weights to target network and save models
     if((index+1)%500 == 0):
         agent.update_target_net()
-        agent.save_model(file_path='models/', iteration=(index+1))
+        agent.save_model(file_path='models_v2/', iteration=(index+1))
         # keep some epsilon alive for training
         epsilon = max(epsilon * decay, epsilon_end)
     agent.set_epsilon(epsilon)

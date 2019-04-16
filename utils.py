@@ -43,7 +43,7 @@ def visualize_game(env, agent, path='images/game_visual.png', debug=False):
     # plot the game
     ncols = 5
     nrows = len(game_images)//ncols + (1 if len(game_images)%ncols > 0 else 0)
-    fig, axs = plt.subplots(nrows, ncols, figsize=(5*ncols, 5*nrows))
+    fig, axs = plt.subplots(nrows, ncols, figsize=(5*ncols, 5*nrows), squeeze=False)
     for i in range(nrows):
         for j in range(ncols):
             index = i*ncols+j
