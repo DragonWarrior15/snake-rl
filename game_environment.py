@@ -46,7 +46,7 @@ class Snake:
                                    snake is moving
         snake (queue) : a queue to store the positions of the snake body
     '''
-    def __init__(self, board_size=11, frames=4, start_length=4, seed=42):
+    def __init__(self, board_size=11, frames=4, start_length=5, seed=42):
         '''
         Initialization function for the environment.
         '''
@@ -54,13 +54,13 @@ class Snake:
         self._actions = {0:'none', 1:'left', -1:'right'}
         self._board_size = board_size
         self._n_frames = frames
-        self._reward = {'out':-1, 'food':10, 'time':-0.01}
+        self._reward = {'out':-1, 'food':1, 'time':0}
         # start length is constrained to be less than half of board size
         self._start_length = min(start_length, (board_size-2)//2)
         # set numpy seed for reproducible results
-        np.random.seed(seed)
+        # np.random.seed(seed)
         # time limit to contain length of game
-        self._max_time_limit = 48
+        self._max_time_limit = 998
 
     def _queue_to_board(self):
         '''

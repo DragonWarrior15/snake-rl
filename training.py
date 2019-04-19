@@ -15,7 +15,7 @@ import pandas as pd
 from utils import play_game
 
 # some global variables
-board_size = 11
+board_size = 7
 frames = 4
 
 
@@ -33,12 +33,12 @@ epsilon = 0.9
 epsilon_end = 0.01
 episodes = 10**5
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
-decay = 0.98
+decay = 0.99
 
 # play some games initially and train the model
 agent.set_epsilon(epsilon)
 for i in range(3):
-    _ = play_game(env, agent, n_games=1000//3, record=True, verbose=True)
+    _ = play_game(env, agent, n_games=1000//3, record=True, verbose=True, reset_seed=True)
 # _ = agent.train_agent(sample_size=5000, epochs=20)
 
 rewards_history = []
@@ -52,7 +52,7 @@ for index in tqdm(range(episodes)):
     if((index+1)%100 == 0):
         # keep track of agent rewards_history
         agent.set_epsilon(0)
-        current_rewards = play_game(env, agent, n_games=20, record=False)
+        current_rewards = play_game(env, agent, n_games=10, record=False)
         rewards_history.append(np.mean(current_rewards))
         # if episodes is large, print only once in a while
         print('Current Reward mean, dev : {:.2f}, {:.3f}'.\
@@ -63,7 +63,7 @@ for index in tqdm(range(episodes)):
     # copy weights to target network and save models
     if((index+1)%500 == 0):
         agent.update_target_net()
-        agent.save_model(file_path='models_v2/', iteration=(index+1))
+        agent.save_model(file_path='models_v3/', iteration=(index+1))
         # keep some epsilon alive for training
         epsilon = max(epsilon * decay, epsilon_end)
     agent.set_epsilon(epsilon)

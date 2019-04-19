@@ -1,15 +1,19 @@
 # some utility functions for the project
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import numpy as np
 
 def play_game(env, agent, n_games=100, record=True,
-              verbose=False):
+              verbose=False, reset_seed=False):
     '''
     function to play some games and return the rewards list
+    has reset seed option to keep the board exactly same every time
     '''
     rewards = []
     iterator = range(n_games)
     for _ in (tqdm(iterator) if verbose else iterator):
+        if(reset_seed):
+            np.random.seed(42)
         rewards.append(0)
         s = env.reset()
         done = 0

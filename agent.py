@@ -98,8 +98,7 @@ class QLearningAgent():
         if(np.random.random() <= self._epsilon):
             action = int(np.random.choice(list(range(self._n_actions)), 1)[0])
         else:
-            q_values = self._get_qvalues(board.reshape((1,) + self._input_shape),
-                                        self._model_pred)
+            q_values = self._get_qvalues(board, self._model_pred)
             action = int(np.argmax(q_values))
         action = self._action_map(action)
         return action
@@ -113,10 +112,10 @@ class QLearningAgent():
         input_board = Input((self._board_size, self._board_size, self._n_frames,))
         input_action = Input((self._n_actions,))
         # total rows + columns + diagonals is total units
-        x = Conv2D(64, (3,3), activation = 'relu')(input_board)
-        x = Conv2D(128, (3,3), activation = 'relu')(x)
+        x = Conv2D(16, (3,3), activation = 'relu', data_format='channels_last')(input_board)
+        x = Conv2D(32, (3,3), activation = 'relu', data_format='channels_last')(x)
         x = Flatten()(x)
-        x = Dense(64, activation = 'relu')(x)
+        x = Dense(128, activation = 'relu')(x)
         x = Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
         x = Multiply()([input_action, x])
         out = Lambda(lambda x: K.sum(x, axis = 1), output_shape = (1,))(x)
