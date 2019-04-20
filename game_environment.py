@@ -198,7 +198,7 @@ class Snake:
             done : whether the game is over or not (1 or 0)
             info : any auxillary game information
         '''
-        assert action in list(range(len(self._n_actions))), "Action must be in " + list(range(self._n_actions))
+        assert action in list(range(self._n_actions)), "Action must be in " + list(range(self._n_actions))
         reward, done = 0, 0
 
         # check if the current action is feasible

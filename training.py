@@ -24,7 +24,7 @@ version = 'v04'
 # setup the environment
 env = Snake(board_size=board_size, frames=frames)
 s = env.reset()
-actions_list = [-1, 0, 1]
+n_actions = env.get_num_actions()
 
 # setup the agent
 K.clear_session()
@@ -39,26 +39,26 @@ episodes = 10**5
 decay = 0.99
 
 # play some games initially and train the model
-_ = play_game(env, agent, actions_list, n_games=10000, record=True, epsilon=epsilon, verbose=True, reset_seed=False)
+_ = play_game(env, agent, n_actions, n_games=10000, record=True, epsilon=epsilon, verbose=True, reset_seed=False)
 # _ = agent.train_agent(batch_size=5000)
 
 # training loop
 model_logs = {'iteration':[], 'reward_mean':[], 'reward_dev':[], 'loss':[]}
 for index in tqdm(range(episodes)):
     # make small changes to the buffer and slowly train
-    _ = play_game(env, agent, n_games=5, record=True)
-    agent.train_agent(batch_size=64)
+    _ = play_game(env, agent, n_actions, epsilon=epsilon, n_games=5, record=True)
+    loss = agent.train_agent(batch_size=64)
     # check performance every once in a while
     if((index+1)%100 == 0):
-        model_logs['loss'].append(agent.train_agent(batch_size=64, return_loss=True))
+        model_logs['loss'].append(loss)
         # keep track of agent rewards_history
-        current_rewards = play_game(env, agent, actions_list, n_games=10, epsilon=0,
+        current_rewards = play_game(env, agent, n_actions, n_games=10, epsilon=-1,
                                     record=False)
         model_logs['iteration'].append(index+1)
         model_logs['reward_mean'].append(np.mean(current_rewards))
         model_logs['reward_dev'].append(np.std(current_rewards))
         pd.DataFrame(model_logs)[['iteration', 'reward_mean', 'reward_dev', 'loss']].to_csv('model_logs/{:s}.csv'.format(version), index=False)
-        
+
     # copy weights to target network and save models
     if((index+1)%500 == 0):
         agent.update_target_net()

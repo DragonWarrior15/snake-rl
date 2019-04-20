@@ -4,13 +4,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 
-def play_game(env, agent, actions_list, n_games=100, epsilon=0.01, record=True,
+def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
               verbose=False, reset_seed=False):
     '''
     function to play some games and return the rewards list
     has reset seed option to keep the board exactly same every time
+    if epsilon is being used, it should be between 0 to 1
     '''
-    epsilon = min(max(0, epsilon), 1)
+    # epsilon = min(max(0, epsilon), 1)
     rewards = []
     iterator = tqdm(range(n_games)) if verbose else range(n_games)
     for _ in iterator:
@@ -22,7 +23,7 @@ def play_game(env, agent, actions_list, n_games=100, epsilon=0.01, record=True,
         while(not done):
             # use epsilon greedy policy to get next action
             if(np.random.random() <= epsilon):
-                action = np.random.choice(actions_list)
+                action = np.random.choice(list(range(n_actions)))
             else:
                 action = agent.move(s)
             next_s, reward, done, info = env.step(action)

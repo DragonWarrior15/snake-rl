@@ -137,7 +137,7 @@ class QLearningAgent():
         one_hot_action[0, action] = 1
         self._buffer.add_to_buffer([board, one_hot_action, reward, next_board, done])
 
-    def train_agent(self, batch_size=64, return_loss=False):
+    def train_agent(self, batch_size=64):
         '''
         train the model by sampling from buffer and return the error
         Returns:
@@ -153,11 +153,8 @@ class QLearningAgent():
         target = self._get_qvalues(s)
         target = (1-a)*target + a*discounted_reward
         # fit
-        self._model.train_on_batch(self._normalize_board(s), target)
-        if(return_loss):
-            return self._model.evaluate(self._normalize_board(s), target)
-        else:
-            return None
+        loss = self._model.train_on_batch(self._normalize_board(s), target)
+        return loss
 
     def update_target_net(self):
         '''
