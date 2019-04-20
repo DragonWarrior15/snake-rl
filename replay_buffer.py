@@ -29,12 +29,9 @@ class ReplayBuffer:
         '''
         buffer_size = len(self._buffer)
         size = min(size, buffer_size)
-        p = (1.0*size)/buffer_size
+        sample_data_idx = set(np.random.randint(0, high=buffer_size, size=size))
         # sample size will be smaller than buffer size, hence traverse queue once
-        sample_data = []
-        for x in self._buffer:
-            if(np.random.random() < p):
-                sample_data.append(x)
+        sample_data = [val for index, val in enumerate(self._buffer) if index in sample_data_idx]
         np.random.shuffle(sample_data)
         s, a, r, next_s, done = [], [], [], [], []
         for x in sample_data:
@@ -48,5 +45,5 @@ class ReplayBuffer:
         r = np.array(r).reshape(-1, 1)
         next_s = np.array(next_s)
         done = np.array(done).reshape(-1, 1)
-        
+
         return s, a, r, next_s, done

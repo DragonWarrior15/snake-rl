@@ -1,5 +1,4 @@
 __pycache__/
 models/
-models_v2/
-models_v3/
+model_logs/
 *.log

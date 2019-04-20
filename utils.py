@@ -2,23 +2,29 @@
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 
-def play_game(env, agent, n_games=100, record=True,
+def play_game(env, agent, actions_list, n_games=100, epsilon=0.01, record=True,
               verbose=False, reset_seed=False):
     '''
     function to play some games and return the rewards list
     has reset seed option to keep the board exactly same every time
     '''
+    epsilon = min(max(0, epsilon), 1)
     rewards = []
-    iterator = range(n_games)
-    for _ in (tqdm(iterator) if verbose else iterator):
+    iterator = tqdm(range(n_games)) if verbose else range(n_games)
+    for _ in iterator:
         if(reset_seed):
-            np.random.seed(42)
+            np.random.seed(429834)
         rewards.append(0)
         s = env.reset()
         done = 0
         while(not done):
-            action = agent.move(s)
+            # use epsilon greedy policy to get next action
+            if(np.random.random() <= epsilon):
+                action = np.random.choice(actions_list)
+            else:
+                action = agent.move(s)
             next_s, reward, done, info = env.step(action)
             if(record):
                 agent.add_to_buffer(s, action, reward, next_s, done)
@@ -56,3 +62,17 @@ def visualize_game(env, agent, path='images/game_visual.png', debug=False):
                 title = 'time:{:2d}\nqvalues->right:{:.2f}, nothing:{:.2f}, left:{:.2f}'.format(time[index], *qvalues[index])
                 axs[i][j].set_title(title)
     fig.savefig(path, bbox_inches='tight')
+
+def plot_from_logs(data, version):
+    ''' utility function to plot the learning curves '''
+    if(isinstance(data, str)):
+        # read from file and plot
+        pass
+    if(isinstance(data, dict)):
+        # use the lists in dict to plot
+        fig, axs = plt.subplots(1, 2, figsize=(17, 8))
+        axs[0].plot(data['iteration'], data['reward_mean'])
+        axs[0].set_title('Mean Reward')
+        axs[1].plot(data['iteration'], data['loss'])
+        axs[1].set_title('Loss')
+        plt.show()

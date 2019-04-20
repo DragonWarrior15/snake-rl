@@ -9,8 +9,8 @@ from utils import visualize_game
 import keras.backend as K
 
 # some global variables
-board_size = 7
-frames = 4
+board_size = 5
+frames = 2
 
 # setup the environment
 env = Snake(board_size=board_size, frames=frames)
@@ -20,9 +20,9 @@ env._max_time_limit = 48
 
 # setup the agent
 K.clear_session()
-agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=20000)
+agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=100000)
 
 # for iteration in [5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 55000, 60000]:
-for iteration in range(91000):
-    agent.load_model('models_v3', iteration=iteration)
-    visualize_game(env, agent, path='images/game_visual_v3_{:d}.png'.format(iteration), debug=True)
+for iteration in [3000, 5000, 7000, 9000, 10000]:
+    agent.load_model('models/v04', iteration=iteration)
+    visualize_game(env, agent, path='images/game_visual_v4_{:d}.png'.format(iteration), debug=True)
