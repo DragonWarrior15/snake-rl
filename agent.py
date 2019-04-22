@@ -29,7 +29,6 @@ class QLearningAgent():
         buffer_size (int): size of the replay buffer
         buffer (queue): replay buffer
         n_actions (int): no of actions available in the action space
-        actions (list): list of possible actions that can be taken
         gamma (float): for reward discounting
         use_target_net (bool): if to keep two networks for learning
         input_shape (tuple): shape of input tensor
@@ -40,7 +39,6 @@ class QLearningAgent():
         self._n_frames = frames
         self._buffer_size = buffer_size
         self._n_actions = n_actions
-        self._actions = [-1, 0, 1]
         self._gamma = gamma
         self._use_target_net = use_target_net
         self._input_shape = (self._board_size, self._board_size, self._n_frames)
@@ -67,7 +65,7 @@ class QLearningAgent():
         if(board.ndim == 3):
             board = board.reshape((1,) + self._input_shape)
         board = self._normalize_board(board.copy())
-        q_values = model.predict(board)
+        q_values = model.predict_on_batch(board)
         return q_values
 
     def _normalize_board(self, board):
@@ -78,8 +76,7 @@ class QLearningAgent():
     def move(self, board):
         ''' get the action using agent policy '''
         q_values = self._get_qvalues(board, self._model)
-        action = int(np.argmax(q_values))
-        return action
+        return int(np.argmax(q_values))
 
     def _agent_models(self):
         '''
@@ -89,14 +86,14 @@ class QLearningAgent():
         '''
         input_board = Input((self._board_size, self._board_size, self._n_frames,))
         # total rows + columns + diagonals is total units
-        x = Conv2D(16, (3,3), activation = 'relu', data_format='channels_last')(input_board)
-        x = Conv2D(32, (3,3), activation = 'relu', data_format='channels_last')(x)
+        x = Conv2D(16, (4,4), activation = 'relu', data_format='channels_last')(input_board)
+        x = Conv2D(32, (4,4), activation = 'relu', data_format='channels_last')(x)
         x = Flatten()(x)
-        x = Dense(128, activation = 'relu')(x)
+        x = Dense(64, activation = 'relu')(x)
         out = Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
 
         model = Model(inputs = input_board, outputs = out)
-        model.compile(optimizer = SGD(1e-4), loss = 'mean_squared_error')
+        model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
 
         return model
 
@@ -133,11 +130,11 @@ class QLearningAgent():
         add current game step to the replay buffer
         also maps action back to one hot encoded version
         '''
-        one_hot_action = np.zeros((1, len(self._actions)))
+        one_hot_action = np.zeros((1, self._n_actions))
         one_hot_action[0, action] = 1
         self._buffer.add_to_buffer([board, one_hot_action, reward, next_board, done])
 
-    def train_agent(self, batch_size=64):
+    def train_agent(self, batch_size=32):
         '''
         train the model by sampling from buffer and return the error
         Returns:
@@ -145,10 +142,9 @@ class QLearningAgent():
         '''
         s, a, r, next_s, done = self._buffer.sample(batch_size)
         # calculate the discounted reward, and then train accordingly
-        not_done = 1 - done
         current_model = self._target_net if self._use_target_net else self._model
         next_qvalues = self._get_qvalues(next_s, current_model)
-        discounted_reward = r + (self._gamma * np.max(next_qvalues, axis = 1).reshape(-1, 1)) * not_done
+        discounted_reward = r + (self._gamma * np.max(next_qvalues, axis = 1).reshape(-1, 1)) * (1-done)
         # create the target variable, only the column with action has different value
         target = self._get_qvalues(s)
         target = (1-a)*target + a*discounted_reward

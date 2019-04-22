@@ -1,8 +1,10 @@
 # some utility functions for the project
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import numpy as np
 import time
+import pandas as pd
 
 def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
               verbose=False, reset_seed=False):
@@ -37,6 +39,11 @@ def visualize_game(env, agent, path='images/game_visual.png', debug=False):
     game_images = []
     time = []
     qvalues = []
+    board_size = env.get_board_size()
+    half_width = 1.0/(2*board_size)
+    delta = 0.025*2*half_width
+    half_width-=delta
+    color_map = {0: 'lightgray', 1: 'g', 2: 'b', 3: 'r', 4: 'darkgray'}
     s = env.reset()
     game_images.append(s[:,:,0].copy())
     done = 0
@@ -59,21 +66,32 @@ def visualize_game(env, agent, path='images/game_visual.png', debug=False):
         for j in range(ncols):
             index = i*ncols+j
             if(index < len(game_images)):
-                axs[i][j].imshow(game_images[index], cmap='gray')
-                title = 'time:{:2d}\nqvalues->right:{:.2f}, nothing:{:.2f}, left:{:.2f}'.format(time[index], *qvalues[index])
+                # plot the individual small squares in the frame
+                for i2 in range(board_size):
+                    for j2 in range(board_size):
+                        rect = Rectangle(((half_width+delta)*(2*j2)+delta, (half_width+delta)*(2*(board_size-1-i2))+delta),
+                                        width=2*half_width, height=2*half_width,
+                                        color=color_map[game_images[index][i2, j2]])
+                        axs[i][j].add_patch(rect)
+                # axs[i][j].imshow(game_images[index], cmap='gray')
+                title = 'time:{:2d}\nright:{:.2f}, nothing:{:.2f}, left:{:.2f}'.format(time[index], *qvalues[index])
                 axs[i][j].set_title(title)
     fig.savefig(path, bbox_inches='tight')
 
-def plot_from_logs(data, version):
+def plot_from_logs(data):
     ''' utility function to plot the learning curves '''
     if(isinstance(data, str)):
         # read from file and plot
-        pass
-    if(isinstance(data, dict)):
+        data = pd.read_csv(data)
+    elif(isinstance(data, dict)):
         # use the lists in dict to plot
-        fig, axs = plt.subplots(1, 2, figsize=(17, 8))
-        axs[0].plot(data['iteration'], data['reward_mean'])
-        axs[0].set_title('Mean Reward')
-        axs[1].plot(data['iteration'], data['loss'])
-        axs[1].set_title('Loss')
-        plt.show()
+        pass
+    else:
+        print('Provide a dictionary or file path for the data')
+    fig, axs = plt.subplots(2, 1, figsize=(8, 8))
+    axs[0].plot(data['iteration'], data['reward_mean'])
+    axs[0].set_ylabel('Mean Reward')
+    axs[1].plot(data['iteration'], data['loss'])
+    axs[1].set_ylabel('Loss')
+    axs[1].set_xlabel('Iteration')
+    plt.show()

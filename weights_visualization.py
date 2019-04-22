@@ -9,8 +9,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # some global variables
-board_size = 11
-frames = 4
+board_size = 6
+frames = 2
 
 # setup the environment
 env = Snake(board_size=board_size, frames=frames)
@@ -21,9 +21,9 @@ K.clear_session()
 agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=20000)
 
 # load weights into the agent
-agent.load_model(file_path='models/', iteration=46000)
+agent.load_model(file_path='models/v04/', iteration=80000)
 
-agent.set_epsilon(0)
+'''
 # make some moves
 for i in range(3):
     env.print_game()
@@ -31,9 +31,10 @@ for i in range(3):
     next_s, _, _, _ = env.step(action)
     s = next_s.copy()
 env.print_game()
+'''
 
 # define temporary model to get intermediate outputs
-model_temp = Model(inputs=agent._model_pred.input, outputs=agent._model_pred.layers[1].output)
+model_temp = Model(inputs=agent._model.input, outputs=agent._model.layers[2].output)
 output_temp = model_temp.predict(s.reshape(1, board_size, board_size, frames))[0,:,:,:]
 
 # visualize weights

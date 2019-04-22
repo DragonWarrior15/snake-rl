@@ -16,9 +16,9 @@ from utils import play_game
 import time
 
 # some global variables
-board_size = 6
+board_size = 10
 frames = 2
-version = 'v04'
+version = 'v09'
 
 
 # setup the environment
@@ -28,7 +28,7 @@ n_actions = env.get_num_actions()
 
 # setup the agent
 K.clear_session()
-agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=100000)
+agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=50000)
 # agent.print_models()
 
 # setup the epsilon range and decay rate for epsilon
@@ -39,7 +39,7 @@ episodes = 10**5
 decay = 0.99
 
 # play some games initially and train the model
-_ = play_game(env, agent, n_actions, n_games=10000, record=True, epsilon=epsilon, verbose=True, reset_seed=False)
+_ = play_game(env, agent, n_actions, n_games=5000, record=True, epsilon=epsilon, verbose=True, reset_seed=False)
 # _ = agent.train_agent(batch_size=5000)
 
 # training loop
@@ -49,7 +49,7 @@ for index in tqdm(range(episodes)):
     _ = play_game(env, agent, n_actions, epsilon=epsilon, n_games=5, record=True)
     loss = agent.train_agent(batch_size=64)
     # check performance every once in a while
-    if((index+1)%100 == 0):
+    if((index+1)%500 == 0):
         model_logs['loss'].append(loss)
         # keep track of agent rewards_history
         current_rewards = play_game(env, agent, n_actions, n_games=10, epsilon=-1,
