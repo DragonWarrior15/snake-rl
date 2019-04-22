@@ -18,7 +18,7 @@ import time
 # some global variables
 board_size = 10
 frames = 2
-version = 'v09'
+version = 'v10'
 
 
 # setup the environment
@@ -28,18 +28,18 @@ n_actions = env.get_num_actions()
 
 # setup the agent
 K.clear_session()
-agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=50000)
+agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=60000)
 # agent.print_models()
 
 # setup the epsilon range and decay rate for epsilon
 epsilon = 1
 epsilon_end = 0.01
-episodes = 10**5
+episodes = 2 * (10**5)
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 decay = 0.99
 
 # play some games initially and train the model
-_ = play_game(env, agent, n_actions, n_games=5000, record=True, epsilon=epsilon, verbose=True, reset_seed=False)
+_ = play_game(env, agent, n_actions, n_games=6000, record=True, epsilon=epsilon, verbose=True, reset_seed=False)
 # _ = agent.train_agent(batch_size=5000)
 
 # training loop

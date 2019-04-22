@@ -204,7 +204,7 @@ class Snake:
         reward, done = 0, 0
 
         # check if the current action is feasible
-        reward, done, can_eat_food = self._check_if_done(action)
+        reward, done, can_eat_food, termination_reason = self._check_if_done(action)
         if(done == 0):
             # if not done, move the snake
             self._move_snake(action, can_eat_food)
@@ -215,7 +215,8 @@ class Snake:
                 self._get_food()
 
         # info contains time elapsed
-        info = {'time':self._time, 'food':self._count_food}
+        info = {'time':self._time, 'food':self._count_food,
+                'termination_reason':termination_reason}
 
         # update time
         self._time += 1
@@ -227,6 +228,11 @@ class Snake:
         return((self._snake_length - self._start_length + 1) * self._reward['food'])
         # return self._reward['food']
 
+    def _get_death_reward(self):
+        ''' try different rewards schemes for death '''
+        return((self._snake_length - self._start_length + 1) * self._reward['out'])
+        # return self._reward['out']
+
     def _check_if_done(self, action):
         '''
         checks if the game has ended or if food has been taken
@@ -235,21 +241,24 @@ class Snake:
             done : 1 if ended else 0
             can_eat_food : whether the current action leads to eating food
         '''
-        reward, done, can_eat_food = self._reward['time'], 0, 0
+        reward, done, can_eat_food, termination_reason = \
+                            self._reward['time'], 0, 0, ''
         # check if the current action forces snake out of board
         new_head = self._get_new_head(action, self._snake_direction)
         while(1):
             # snake is colliding with border/obstacles
             if(self._board[0][new_head.row, new_head.col] == self._value['border']):
                 done = 1
-                reward = self._reward['out']
+                reward = self._get_death_reward()
+                termination_reason = 'collision_wall'
                 break
             # collision with self, collision with tail is allowed
             if(self._board[0][new_head.row, new_head.col] == self._value['snake']):
                 snake_tail = self._get_snake_tail()
                 if(not(new_head.row == snake_tail.row and new_head.col == snake_tail.col)):
                     done = 1
-                    reward = self._reward['out']
+                    reward = self._get_death_reward()
+                    termination_reason = 'collision_self'
                     break
             # check if food
             if(self._board[0][new_head.row, new_head.col] == self._value['food']):
@@ -260,10 +269,11 @@ class Snake:
             # check if time is up, can happen even if food is eaten
             if(self._time >= self._max_time_limit):
                 done = 1
+                termination_reason = 'time_up'
                 break
             # if normal movement, no other updates needed
             break
-        return reward, done, can_eat_food
+        return reward, done, can_eat_food, termination_reason
 
     def _move_snake(self, action, can_eat_food):
         '''

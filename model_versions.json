@@ -1,0 +1,82 @@
+{
+    "model_versions":{
+        "v04":{
+            "reward"         :"-10/10 reward",
+            "conv_filters"   :"8, 16 filters of (3,3)",
+            "dense"          :16,
+            "batch_size"     :32,
+            "reward_changing":"(length-initial_length)*food_reward",
+            "board_size"     :6,
+            "frames"         :2,
+            "buffer_size"    :50000,
+            "optimizer"      :"Adam(0.0001)"
+        },
+        "v05":{
+            "reward"         :"-1/1 reward",
+            "conv_filters"   :"8, 16 filters of (3,3)",
+            "dense"          :16,
+            "batch_size"     :64,
+            "reward_changing":"(length-initial_length)*food_reward",
+            "board_size"     :6,
+            "frames"         :2,
+            "buffer_size"    :50000,
+            "optimizer"      :"Adam(0.0001)"
+        },
+        "v06":{
+            "reward"         :"-10/10 reward",
+            "conv_filters"   :"8, 16 filters of (3,3)",
+            "dense"          :16,
+            "batch_size"     :64,
+            "reward_changing":"(length-initial_length)*food_reward",
+            "board_size"     :6,
+            "frames"         :2,
+            "buffer_size"    :100000,
+            "optimizer"      :"Adam(0.0001)"
+        },
+        "v07":{
+            "reward"         :"-10/10 reward",
+            "conv_filters"   :"16, 32 filters of (3,3)",
+            "dense"          :16,
+            "batch_size"     :32,
+            "reward_changing":"(length-initial_length)*food_reward",
+            "board_size"     :6,
+            "frames"         :2,
+            "buffer_size"    :100000,
+            "optimizer"      :"RMSprop(0.0005)"
+        },
+        "v08":{
+            "reward"         :"-10/10 reward",
+            "conv_filters"   :"16, 32 filters of (3,3)",
+            "dense"          :16,
+            "batch_size"     :32,
+            "reward_changing":"constant",
+            "board_size"     :6,
+            "frames"         :2,
+            "buffer_size"    :100000,
+            "optimizer"      :"RMSprop(0.0005)"
+        },
+        "v09":{
+            "reward"         :"-10/10 reward",
+            "conv_filters"   :"16, 32 filters of (4,4)",
+            "dense"          :64,
+            "batch_size"     :32,
+            "reward_changing":"(length-initial_length)*food_reward",
+            "board_size"     :10,
+            "frames"         :2,
+            "buffer_size"    :50000,
+            "optimizer"      :"RMSprop(0.0005)"
+        },
+        "v10":{
+            "reward"         :"-10/10 reward",
+            "conv_filters"   :"16, 32 filters of (4,4)",
+            "dense"          :64,
+            "batch_size"     :32,
+            "reward_changing":"(length-initial_length)*(food/death)",
+            "board_size"     :10,
+            "frames"         :2,
+            "buffer_size"    :60000,
+            "optimizer"      :"RMSprop(0.0005)",
+            "training_range" :178000
+        }
+    }
+}
