@@ -214,12 +214,12 @@ class Snake:
             if(can_eat_food):
                 self._get_food()
 
-        # info contains time elapsed
+        # update time
+        self._time += 1
+        # info contains time elapsed etc
         info = {'time':self._time, 'food':self._count_food,
                 'termination_reason':termination_reason}
 
-        # update time
-        self._time += 1
 
         return self._queue_to_board(), reward, done, info
 
