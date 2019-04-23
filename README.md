@@ -4,12 +4,16 @@ The repository contains code for training a DQN agent to play the game of snake.
 The agent takes 2 frames of the game as input (image) and predicts the action values for
 the next action to take.
 
-![alt text](https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v10_174500_4.gif "model v10 agent")
+<img align="left" width="100" height="100" src="http://www.fillmurray.com/100/100https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v10_174500_4.gif "model v10 agent"
+<img align="right" width="100" height="100" src="http://www.fillmurray.com/100/100https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v10_174500_0.gif "model v10 agent"
 
 ## Code Structure
 [game_environment.py](../game_environment.py) contains the necessary code to create and interact with the snake environment (class Snake). The interface is similar to openai gym interface.
+
 [agent.py](../agent.py) contains the agent for playing the game (class QLearningAgent). It implements and trains a convolutional neural network for the action values.
+
 [training.py](../training.py) contains the complete code to train an agent.
+
 [game_visualization.py](../game_visualization.py) contains the code to convert the game to mp4 format.
 
 ```python
