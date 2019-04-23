@@ -4,13 +4,13 @@ The repository contains code for training a DQN agent to play the game of snake.
 The agent takes 2 frames of the game as input (image) and predicts the action values for
 the next action to take.
 
-![alt text](../images/game_visual_v10_174500_4.gif "model v10 agent")
+![alt text](https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v10_174500_4.gif "model v10 agent")
 
 ## Code Structure
-[game_environment.py][../game_environment.py] contains the necessary code to create and interact with the snake environment (class Snake). The interface is similar to openai gym interface.
-[agent.py][../agent.py] contains the agent for playing the game (class QLearningAgent). It implements and trains a convolutional neural network for the action values.
-[training.py][../training.py] contains the complete code to train an agent.
-[game_visualization.py][../game_visualization.py] contains the code to convert the game to mp4 format.
+[game_environment.py](../game_environment.py) contains the necessary code to create and interact with the snake environment (class Snake). The interface is similar to openai gym interface.
+[agent.py](../agent.py) contains the agent for playing the game (class QLearningAgent). It implements and trains a convolutional neural network for the action values.
+[training.py](../training.py) contains the complete code to train an agent.
+[game_visualization.py](../game_visualization.py) contains the code to convert the game to mp4 format.
 
 ```python
 from game_environment import Snake
@@ -40,11 +40,11 @@ agent.update_target_net() # update the target network
 Configuration for different experiments can be found in [model_versions.json][../model_versions.json] file.
 
 Adam optimizer gives a very noisy curve with very slow increase in rewards. Loss is also not stable.
-![alt text](../images/model_logs_v04.png "model version v04")
+![alt text](https://github.com/DragonWarrior15/snake-rl/blob/master/images/model_logs_v04.png "model version v04")
 
 Switching to RMSprop optimizer steers things in the right direction and the agent start to learn.
 Key point to note is that the increasing rewards with length of snake send a strong signal for propagation across the different states. Although, the loss here is noisy. Current learning rate is 0.0005, and reducing it to 0.0001 makes the model relatively unstable.
-![alt text](../images/model_logs_v07.png "model version v07")
+![alt text](https://github.com/DragonWarrior15/snake-rl/blob/master/images/model_logs_v07.png "model version v07")
 
 RMSprop with both positive and negative rewards increasing with snake length gives a more stable loss curve, and the rewards also steadily increase to quite high values.
-![alt text](../images/model_logs_v10.png "model version v10")
+![alt text](https://github.com/DragonWarrior15/snake-rl/blob/master/images/model_logs_v10.png "model version v10")
