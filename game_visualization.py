@@ -25,7 +25,7 @@ agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=10)
 # for iteration in [5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 55000, 60000]:
 for iteration in [174500]:
     agent.load_model('models/{:s}'.format(version), iteration=iteration)
-    for i in range(1):
+    for i in range(10):
         visualize_game(env, agent,
             path='images/game_visual_{:s}_{:d}_{:d}.mp4'.format(version, iteration, i),
             debug=False, animate=True)
