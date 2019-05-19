@@ -3,7 +3,7 @@ This script stores the game environment. Note that the snake is a part of the
 environment itself in this implementation.
 The environment state is a set of frames, we want the agent to be able to discern
 the movement of the snake as well, for which multiple frames are needed.
-We will keep track of a history of 4 frames.
+We will keep track of a history of 2 frames.
 Important to manually reset the environment by user after initialization.
 The board borders are different from board color
 The player cannot play infinitely, and hence max time limit is imposed

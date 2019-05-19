@@ -2,7 +2,7 @@
 # useful to study different iterations
 
 import numpy as np
-from agent import QLearningAgent
+from agent import DeepQLearningAgent
 from game_environment import Snake
 from utils import visualize_game
 import keras.backend as K
@@ -20,7 +20,7 @@ env._max_time_limit = 998
 
 # setup the agent
 K.clear_session()
-agent = QLearningAgent(board_size=board_size, frames=frames, buffer_size=10)
+agent = DeepQLearningAgent(board_size=board_size, frames=frames, buffer_size=10)
 
 # for iteration in [5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 55000, 60000]:
 for iteration in [174500]:

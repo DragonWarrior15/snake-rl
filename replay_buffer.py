@@ -17,6 +17,10 @@ class ReplayBuffer:
         ''' update the buffer by adding data '''
         self._buffer.append(data)
 
+    def get_current_size(self):
+        ''' get current buffer size '''
+        return len(self._buffer)
+
     def sample(self, size = 1000):
         '''
         sample data from buffer and return in easily ingestible form
