@@ -214,9 +214,9 @@ class PolicyGradientAgent(DeepQLearningAgent):
         # calculate loss
         J = K.mean(K.sum(log_policy * a, axis=1) * discounted_reward)
         entropy = -K.sum(K.sum(policy * log_policy, axis=1))
-        loss = -J - 0.001*entropy
+        loss = -J - 0.01*entropy
         # fit
-        optimizer = RMSprop(0.005)
+        optimizer = RMSprop(0.01)
         updates = optimizer.get_updates(loss, self._model.trainable_weights)
         model = K.function([self._model.input, a, discounted_reward], [loss], updates=updates)
         return model
@@ -228,17 +228,27 @@ class PolicyGradientAgent(DeepQLearningAgent):
             error (float) : the current loss
         '''
         # in policy gradient, only one complete episode is used for training
-        s, a, discounted_reward, _, _ = self._buffer.sample(self._buffer.get_current_size())
+        s, a, r, _, _ = self._buffer.sample(self._buffer.get_current_size())
         # unlike DQN, the discounted reward is not estimated but true one
         # we have defined custom policy graident loss function above
         # use that to train to agent model
-        loss = self._update_function([self._normalize_board(s.copy()), a, discounted_reward])
+        # normzlize the rewards for training stability
+        if((r == r[0][0]).sum() == r.shape[0]):
+            # std dev is zero
+            r -= r
+        else:
+            r = (r - np.mean(r))/np.std(r)
+        loss = self._update_function([self._normalize_board(s.copy()), a, r])
 
         return loss[0]
 
-    def get_action_proba(self, s):
+    def get_action_proba(self, board):
         '''
         returns the action probability values as policy graident is on policy
         '''
-        model_outputs = self._get_model_outputs(board, self._model)
-        return K.softmax(model_outputs)
+        model_outputs = self._get_model_outputs(board, self._model)[0]
+        # subtracting max and taking softmax does not change output
+        # do this for numerical stability
+        model_outputs = model_outputs - max(model_outputs)
+        model_outputs = np.exp(model_outputs)/np.sum(np.exp(model_outputs))
+        return model_outputs

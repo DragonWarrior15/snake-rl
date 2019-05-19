@@ -14,7 +14,7 @@ def calculate_discounted_rewards(rewards, discount_factor):
         if(i == len(rewards)-1):
             discounted_rewards.append(rewards[i])
         else:
-            discounted_rewards.append(discounted_rewards[-1] * gamma + rewards[i])
+            discounted_rewards.append(discounted_rewards[-1] * discount_factor + rewards[i])
     discounted_rewards = discounted_rewards[::-1]
     return discounted_rewards.copy()
 
@@ -44,7 +44,7 @@ def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
             else:
                 if(sample_actions):
                     probs = agent.get_action_proba(s)
-                    action = np.random.choice(list(range(n_actions)), probs=probs)
+                    action = np.random.choice(list(range(n_actions)), p=probs)
                 else:
                     action = agent.move(s)
             next_s, reward, done, info = env.step(action)
@@ -63,7 +63,7 @@ def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
             rewards[-1] += reward
             s = next_s.copy()
         # if using future discounted rewards, then add everything to buffer here
-        if(reward_type == 'discounted_reward'):
+        if(record and reward_type == 'discounted_future'):
             reward_list = calculate_discounted_rewards(reward_list, agent.get_gamma())
             for i in range(len(reward_list)):
                 agent.add_to_buffer(s_list[i], action_list[i], reward_list[i],\
@@ -84,7 +84,7 @@ def visualize_game(env, agent, path='images/game_visual.png', debug=False,
     while(not done):
         a = agent.move(s)
         next_s, r, done, info = env.step(a)
-        qvalues.append(agent._get_qvalues(s)[0])
+        qvalues.append(agent._get_model_outputs(s)[0])
         food_count.append(info['food'])
         game_images.append([next_s[:,:,0], info['time']])
         s = next_s.copy()

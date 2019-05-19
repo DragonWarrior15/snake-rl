@@ -1,6 +1,7 @@
 {
     "model_versions":{
         "v04":{
+            "agent_type"     :"DeepQLearningAgent",
             "reward"         :"-10/10 reward",
             "conv_filters"   :"8, 16 filters of (3,3)",
             "dense"          :16,
@@ -12,6 +13,7 @@
             "optimizer"      :"Adam(0.0001)"
         },
         "v05":{
+            "agent_type"     :"DeepQLearningAgent",
             "reward"         :"-1/1 reward",
             "conv_filters"   :"8, 16 filters of (3,3)",
             "dense"          :16,
@@ -23,6 +25,7 @@
             "optimizer"      :"Adam(0.0001)"
         },
         "v06":{
+            "agent_type"     :"DeepQLearningAgent",
             "reward"         :"-10/10 reward",
             "conv_filters"   :"8, 16 filters of (3,3)",
             "dense"          :16,
@@ -34,6 +37,7 @@
             "optimizer"      :"Adam(0.0001)"
         },
         "v07":{
+            "agent_type"     :"DeepQLearningAgent",
             "reward"         :"-10/10 reward",
             "conv_filters"   :"16, 32 filters of (3,3)",
             "dense"          :16,
@@ -45,6 +49,7 @@
             "optimizer"      :"RMSprop(0.0005)"
         },
         "v08":{
+            "agent_type"     :"DeepQLearningAgent",
             "reward"         :"-10/10 reward",
             "conv_filters"   :"16, 32 filters of (3,3)",
             "dense"          :16,
@@ -56,6 +61,7 @@
             "optimizer"      :"RMSprop(0.0005)"
         },
         "v09":{
+            "agent_type"     :"DeepQLearningAgent",
             "reward"         :"-10/10 reward",
             "conv_filters"   :"16, 32 filters of (4,4)",
             "dense"          :64,
@@ -67,6 +73,7 @@
             "optimizer"      :"RMSprop(0.0005)"
         },
         "v10":{
+            "agent_type"     :"DeepQLearningAgent",
             "reward"         :"-10/10 reward",
             "conv_filters"   :"16, 32 filters of (4,4)",
             "dense"          :64,
@@ -77,6 +84,19 @@
             "buffer_size"    :60000,
             "optimizer"      :"RMSprop(0.0005)",
             "training_range" :178000
+        },
+        "v11":{
+            "agent_type"     :"PolicyGradientAgent",
+            "reward"         :"-10/10 reward",
+            "conv_filters"   :"16, 32 filters of (4,4)",
+            "dense"          :64,
+            "batch_size"     :"epsiode length",
+            "reward_changing":"(length-initial_length)*(food_reward)",
+            "board_size"     :10,
+            "frames"         :2,
+            "buffer_size"    :60000,
+            "optimizer"      :"RMSprop(0.0005)",
+            "training_range" :100000
         }
     }
 }

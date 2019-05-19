@@ -18,7 +18,7 @@ import time
 # some global variables
 board_size = 10
 frames = 2
-version = 'v11'
+version = 'v12'
 
 
 # setup the environment
@@ -34,27 +34,38 @@ agent = PolicyGradientAgent(board_size=board_size, frames=frames, buffer_size=60
 # agent.print_models()
 
 # setup the epsilon range and decay rate for epsilon
-if(agent_type == 'DeepQLearningAgent'):
+if(agent_type in ['DeepQLearningAgent']):
     epsilon, epsilon_end = 1, 0.01
-else:
+if(agent_type in ['PolicyGradientAgent']):
     epsilon, epsilon_end = -1, -1
-episodes = 10000 # 2 * (10**5)
+# define no of episodes, loggin frequency
+episodes = 1 * (10**5)
 decay = 0.99
-log_frequency = 200
+log_frequency = 500
+# define rewrad type and update frequency, see utils for more details
+if(agent_type in ['DeepQLearningAgent']):
+    reward_type = 'current'
+    sample_actions = False
+if(agent_type in ['PolicyGradientAgent']):
+    reward_type = 'discounted_future'
+    sample_actions = True
+
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
 # use only for DeepQLearningAgent
-if(agent_type == 'DeepQLearningAgent'):
-    # play some games initially and train the model
+if(agent_type in ['DeepQLearningAgent']):
+    # play some games initially to fill the buffer
     _ = play_game(env, agent, n_actions, n_games=6000, record=True, epsilon=epsilon, verbose=True, reset_seed=False)
 
 # training loop
 model_logs = {'iteration':[], 'reward_mean':[], 'reward_dev':[], 'loss':[]}
 for index in tqdm(range(episodes)):
     # make small changes to the buffer and slowly train
-    _ = play_game(env, agent, n_actions, epsilon=epsilon, n_games=1, record=True)
+    _ = play_game(env, agent, n_actions, epsilon=epsilon, n_games=1, record=True,
+                    sample_actions=sample_actions, reward_type=reward_type)
     loss = agent.train_agent(batch_size=64)
     if(agent_type in ['PolicyGradientAgent']):
+        # for policy gradient algorithm, we only take current episode for training
         agent.reset_buffer()
     # check performance every once in a while
     if((index+1)%log_frequency == 0):
