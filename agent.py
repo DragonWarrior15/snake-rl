@@ -207,18 +207,18 @@ class PolicyGradientAgent(DeepQLearningAgent):
     def _policy_gradient_updates(self):
         ''' a custom function for policy gradient losses '''
         a = K.placeholder(name='a', shape=(None, self._n_actions))
-        discounted_reward = K.placeholder(name='r', shape=(None, 1))
+        discounted_rewards = K.placeholder(name='r', shape=(None, 1))
         # calculate policy
         policy = K.softmax(self._model.output)
         log_policy = K.log(policy)
         # calculate loss
-        J = K.mean(K.sum(log_policy * a, axis=1) * discounted_reward)
+        J = K.mean(K.sum(log_policy * a * discounted_rewards, axis=1))
         entropy = -K.sum(K.sum(policy * log_policy, axis=1))
         loss = -J - 0.01*entropy
         # fit
-        optimizer = RMSprop(0.01)
+        optimizer = RMSprop(0.0005)
         updates = optimizer.get_updates(loss, self._model.trainable_weights)
-        model = K.function([self._model.input, a, discounted_reward], [loss], updates=updates)
+        model = K.function([self._model.input, a, discounted_rewards], [loss, J, entropy], updates=updates)
         return model
 
     def train_agent(self, batch_size=32):
@@ -240,7 +240,7 @@ class PolicyGradientAgent(DeepQLearningAgent):
             r = (r - np.mean(r))/np.std(r)
         loss = self._update_function([self._normalize_board(s.copy()), a, r])
 
-        return loss[0]
+        return loss[0] if len(loss)==1 else loss
 
     def get_action_proba(self, board):
         '''

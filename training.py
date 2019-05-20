@@ -19,10 +19,11 @@ import time
 board_size = 10
 frames = 2
 version = 'v12'
+max_time_limit = 198 # 998
 
 
 # setup the environment
-env = Snake(board_size=board_size, frames=frames)
+env = Snake(board_size=board_size, frames=frames, max_time_limit=max_time_limit)
 s = env.reset()
 n_actions = env.get_num_actions()
 
