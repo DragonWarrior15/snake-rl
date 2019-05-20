@@ -97,6 +97,21 @@
             "buffer_size"    :60000,
             "optimizer"      :"RMSprop(0.0005)",
             "training_range" :100000
+        },
+        "v12":{
+            "agent_type"     :"PolicyGradientAgent",
+            "reward"         :"-10/10 reward",
+            "conv_filters"   :"16, 32 filters of (4,4)",
+            "dense"          :64,
+            "batch_size"     :"epsiode length",
+            "reward_changing":"(length-initial_length)*(food_reward)",
+            "board_size"     :10,
+            "frames"         :2,
+            "buffer_size"    :60000,
+            "optimizer"      :"RMSprop(0.01)",
+            "training_range" :100000,
+            "others"         :"rewards normalized before input to training function\n
+                               leads to 30x reduction in training speed"
         }
     }
 }
