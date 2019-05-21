@@ -4,21 +4,17 @@ store all the agents here
 from replay_buffer import ReplayBuffer
 import numpy as np
 import time
-from keras.models import Model, Sequential, load_model
-from keras.layers import (Input, Conv2D, Dense,
-Flatten, Concatenate, Multiply, Lambda)
-from keras.optimizers import Adam, SGD, RMSprop
-import keras.backend as K
+import tensorflow as tf
 
 def huber_loss(y_true, y_pred, delta=1):
     ''' keras implementation for huber loss '''
     error = (y_true - y_pred)
-    if(K.abs(error) < delta):
+    if(tf.math.abs(error) < delta):
         # quadratic error
-        return K.mean(K.square(error), axis=-1)
+        return tf.reduce_mean(tf.math.square(error), axis=-1)
     else:
         # linear error
-        return K.mean(delta*(K.abs(error) - 0.5*delta), axis=-1)
+        return tf.reduce_mean(delta*(tf.math.abs(error) - 0.5*delta), axis=-1)
 
 class DeepQLearningAgent():
     '''
@@ -86,16 +82,16 @@ class DeepQLearningAgent():
         '''
         returns the model which evaluates q values for a given state input
         '''
-        input_board = Input((self._board_size, self._board_size, self._n_frames,))
+        input_board = tf.keras.layers.Input((self._board_size, self._board_size, self._n_frames,))
         # total rows + columns + diagonals is total units
-        x = Conv2D(16, (4,4), activation = 'relu', data_format='channels_last')(input_board)
-        x = Conv2D(32, (4,4), activation = 'relu', data_format='channels_last')(x)
-        x = Flatten()(x)
-        x = Dense(64, activation = 'relu')(x)
-        out = Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
+        x = tf.keras.layers.Conv2D(16, (4,4), activation = 'relu', data_format='channels_last')(input_board)
+        x = tf.keras.layers.Conv2D(32, (4,4), activation = 'relu', data_format='channels_last')(x)
+        x = tf.keras.layers.Flatten()(x)
+        x = tf.keras.layers.Dense(64, activation = 'relu')(x)
+        out = tf.keras.layers.Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
 
-        model = Model(inputs = input_board, outputs = out)
-        model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
+        model = tf.keras.Model(inputs = input_board, outputs = out)
+        model.compile(optimizer = tf.keras.optimizers.RMSprop(0.0005), loss = 'mean_squared_error')
 
         return model
 
@@ -189,15 +185,15 @@ class PolicyGradientAgent(DeepQLearningAgent):
         '''
         returns the model which evaluates probability values for given state input
         '''
-        input_board = Input((self._board_size, self._board_size, self._n_frames,))
+        input_board = tf.keras.layers.Input((self._board_size, self._board_size, self._n_frames,))
         # total rows + columns + diagonals is total units
-        x = Conv2D(16, (4,4), activation = 'relu', data_format='channels_last')(input_board)
-        x = Conv2D(32, (4,4), activation = 'relu', data_format='channels_last')(x)
-        x = Flatten()(x)
-        x = Dense(64, activation = 'relu')(x)
-        out = Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
+        x = tf.keras.layers.Conv2D(16, (4,4), activation = 'relu', data_format='channels_last')(input_board)
+        x = tf.keras.layers.Conv2D(32, (4,4), activation = 'relu', data_format='channels_last')(x)
+        x = tf.keras.layers.Flatten()(x)
+        x = tf.keras.layers.Dense(64, activation = 'relu')(x)
+        out = tf.keras.layers.Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
 
-        model = Model(inputs = input_board, outputs = out)
+        model = tf.keras.Model(inputs = input_board, outputs = out)
         # do not compile the model here, but rather use the outputs separately
         # in a training function to create any custom loss function
         # model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
@@ -206,23 +202,24 @@ class PolicyGradientAgent(DeepQLearningAgent):
 
     def _policy_gradient_updates(self):
         ''' a custom function for policy gradient losses '''
-        a = K.placeholder(name='a', shape=(None, self._n_actions))
-        discounted_rewards = K.placeholder(name='r', shape=(None, 1))
-        beta = K.placeholder(name='beta', shape=())
+        a = tf.keras.backend.placeholder(name='a', shape=(None, self._n_actions))
+        discounted_rewards = tf.keras.backend.placeholder(name='r', shape=(None, 1))
+        beta = tf.keras.backend.placeholder(name='beta', shape=())
         # calculate policy
-        policy = K.softmax(self._model.output)
-        log_policy = K.log(policy)
+        policy = tf.nn.softmax(self._model.output)
+        log_policy = tf.nn.log_softmax(self._model.output)
         # calculate loss
-        J = K.mean(K.categorical_crossentropy(a * discounted_rewards, self._model.output, from_logits=True))
-        entropy = -K.sum(K.sum(policy * log_policy, axis=1))
+        J = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(a * discounted_rewards, self._model.output))
+        entropy = -tf.reduce_sum(policy * log_policy)
         loss = -J - beta*entropy
         # fit
-        optimizer = SGD(0.01)
+        optimizer = tf.keras.optimizers.RMSprop(0.0005)
         updates = optimizer.get_updates(loss, self._model.trainable_weights)
-        model = K.function([self._model.input, a, discounted_rewards, beta], [loss, J, entropy], updates=updates)
+        model = tf.keras.backend.function([self._model.input, a, discounted_rewards, beta],
+                            [loss, J, entropy], updates=updates)
         return model
 
-    def train_agent(self, batch_size=32, beta=0.0001):
+    def train_agent(self, batch_size=32, beta=0.001):
         '''
         train the model by sampling from buffer and return the error
         Returns:
@@ -250,5 +247,6 @@ class PolicyGradientAgent(DeepQLearningAgent):
         # subtracting max and taking softmax does not change output
         # do this for numerical stability
         model_outputs = model_outputs - max(model_outputs)
-        model_outputs = np.exp(model_outputs)/np.sum(np.exp(model_outputs))
+        model_outputs = np.exp(model_outputs)
+        model_outputs = model_outputs/np.sum(model_outputs)
         return model_outputs

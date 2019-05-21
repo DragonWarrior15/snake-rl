@@ -1,5 +1,5 @@
 '''
-script for training the agent for snake using q learning
+script for training the agent for snake using various methods
 '''
 # run on cpu
 import os
@@ -13,7 +13,6 @@ import time
 from utils import play_game
 from game_environment import Snake
 from agent import DeepQLearningAgent, PolicyGradientAgent
-import keras.backend as K
 
 # some global variables
 board_size = 10
@@ -28,11 +27,16 @@ s = env.reset()
 n_actions = env.get_num_actions()
 
 # setup the agent
-agent_type = 'PolicyGradientAgent'
-K.clear_session()
-# agent = DeepQLearningAgent(board_size=board_size, frames=frames, buffer_size=60000)
 agent = PolicyGradientAgent(board_size=board_size, frames=frames, buffer_size=2000)
+# agent = DeepQLearningAgent(board_size=board_size, frames=frames, buffer_size=60000)
 # agent.print_models()
+
+# check in the same order as class hierarchy
+if(isinstance(agent, DeepQLearningAgent)):
+    agent_type = 'DeepQLearningAgent'
+if(isinstance(agent, PolicyGradientAgent)):
+    agent_type = 'PolicyGradientAgent'
+print('Agent is {:s}'.format(agent_type))
 
 # setup the epsilon range and decay rate for epsilon
 if(agent_type in ['DeepQLearningAgent']):
@@ -40,9 +44,9 @@ if(agent_type in ['DeepQLearningAgent']):
 if(agent_type in ['PolicyGradientAgent']):
     epsilon, epsilon_end = -1, -1
 # define no of episodes, loggin frequency
-episodes = 1 * (10**4)
+episodes = 3 * (10**4)
 decay = 0.99
-log_frequency = 1
+log_frequency = 500
 # define rewrad type and update frequency, see utils for more details
 if(agent_type in ['DeepQLearningAgent']):
     reward_type = 'current'
