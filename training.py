@@ -5,15 +5,15 @@ script for training the agent for snake using q learning
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
-import keras.backend as K
 import numpy as np
-from agent import DeepQLearningAgent, PolicyGradientAgent
-from game_environment import Snake
 from tqdm import tqdm
 from collections import deque
 import pandas as pd
-from utils import play_game
 import time
+from utils import play_game
+from game_environment import Snake
+from agent import DeepQLearningAgent, PolicyGradientAgent
+import keras.backend as K
 
 # some global variables
 board_size = 10
@@ -31,7 +31,7 @@ n_actions = env.get_num_actions()
 agent_type = 'PolicyGradientAgent'
 K.clear_session()
 # agent = DeepQLearningAgent(board_size=board_size, frames=frames, buffer_size=60000)
-agent = PolicyGradientAgent(board_size=board_size, frames=frames, buffer_size=60000)
+agent = PolicyGradientAgent(board_size=board_size, frames=frames, buffer_size=2000)
 # agent.print_models()
 
 # setup the epsilon range and decay rate for epsilon
@@ -40,9 +40,9 @@ if(agent_type in ['DeepQLearningAgent']):
 if(agent_type in ['PolicyGradientAgent']):
     epsilon, epsilon_end = -1, -1
 # define no of episodes, loggin frequency
-episodes = 1 * (10**5)
+episodes = 1 * (10**4)
 decay = 0.99
-log_frequency = 500
+log_frequency = 1
 # define rewrad type and update frequency, see utils for more details
 if(agent_type in ['DeepQLearningAgent']):
     reward_type = 'current'
@@ -50,6 +50,7 @@ if(agent_type in ['DeepQLearningAgent']):
 if(agent_type in ['PolicyGradientAgent']):
     reward_type = 'discounted_future'
     sample_actions = True
+    exploration_threshold = 0.1
 
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 

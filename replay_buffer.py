@@ -21,7 +21,7 @@ class ReplayBuffer:
         ''' get current buffer size '''
         return len(self._buffer)
 
-    def sample(self, size = 1000):
+    def sample(self, size=1000, replace=False):
         '''
         sample data from buffer and return in easily ingestible form
         Returns:
@@ -33,7 +33,8 @@ class ReplayBuffer:
         '''
         buffer_size = len(self._buffer)
         size = min(size, buffer_size)
-        sample_data_idx = set(np.random.randint(0, high=buffer_size, size=size))
+        sample_data_idx = set(np.random.choice(range(buffer_size), \
+                                    size=size, replace=replace))
         # sample size will be smaller than buffer size, hence traverse queue once
         sample_data = [val for index, val in enumerate(self._buffer) if index in sample_data_idx]
         np.random.shuffle(sample_data)

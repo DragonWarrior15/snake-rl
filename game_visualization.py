@@ -10,7 +10,7 @@ import keras.backend as K
 # some global variables
 board_size = 10
 frames = 2
-version = 'v11'
+version = 'v12'
 
 # setup the environment
 env = Snake(board_size=board_size, frames=frames)
@@ -23,7 +23,7 @@ K.clear_session()
 agent = PolicyGradientAgent(board_size=board_size, frames=frames, buffer_size=10)
 
 # for iteration in [5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 55000, 60000]:
-for iteration in [2800]:
+for iteration in [6000]:
     agent.load_model('models/{:s}'.format(version), iteration=iteration)
     for i in range(10):
         visualize_game(env, agent,

@@ -2,13 +2,13 @@
 store all the agents here
 '''
 from replay_buffer import ReplayBuffer
-from keras.models import Model, Sequential, load_model
-from keras.layers import (Input, Conv2D, Dense,
-        Flatten, Concatenate, Multiply, Lambda)
-from keras.optimizers import Adam, SGD, RMSprop
-import keras.backend as K
 import numpy as np
 import time
+from keras.models import Model, Sequential, load_model
+from keras.layers import (Input, Conv2D, Dense,
+Flatten, Concatenate, Multiply, Lambda)
+from keras.optimizers import Adam, SGD, RMSprop
+import keras.backend as K
 
 def huber_loss(y_true, y_pred, delta=1):
     ''' keras implementation for huber loss '''
@@ -208,20 +208,21 @@ class PolicyGradientAgent(DeepQLearningAgent):
         ''' a custom function for policy gradient losses '''
         a = K.placeholder(name='a', shape=(None, self._n_actions))
         discounted_rewards = K.placeholder(name='r', shape=(None, 1))
+        beta = K.placeholder(name='beta', shape=())
         # calculate policy
         policy = K.softmax(self._model.output)
         log_policy = K.log(policy)
         # calculate loss
-        J = K.mean(K.sum(log_policy * a * discounted_rewards, axis=1))
+        J = K.mean(K.categorical_crossentropy(a * discounted_rewards, self._model.output, from_logits=True))
         entropy = -K.sum(K.sum(policy * log_policy, axis=1))
-        loss = -J - 0.01*entropy
+        loss = -J - beta*entropy
         # fit
-        optimizer = RMSprop(0.0005)
+        optimizer = SGD(0.01)
         updates = optimizer.get_updates(loss, self._model.trainable_weights)
-        model = K.function([self._model.input, a, discounted_rewards], [loss, J, entropy], updates=updates)
+        model = K.function([self._model.input, a, discounted_rewards, beta], [loss, J, entropy], updates=updates)
         return model
 
-    def train_agent(self, batch_size=32):
+    def train_agent(self, batch_size=32, beta=0.0001):
         '''
         train the model by sampling from buffer and return the error
         Returns:
@@ -238,8 +239,7 @@ class PolicyGradientAgent(DeepQLearningAgent):
             r -= r
         else:
             r = (r - np.mean(r))/np.std(r)
-        loss = self._update_function([self._normalize_board(s.copy()), a, r])
-
+        loss = self._update_function([self._normalize_board(s.copy()), a, r, beta])
         return loss[0] if len(loss)==1 else loss
 
     def get_action_proba(self, board):

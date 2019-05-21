@@ -57,7 +57,7 @@ class Snake:
         self._n_actions = 3
         self._board_size = board_size
         self._n_frames = frames
-        self._reward = {'out':-1, 'food':1, 'time':0}
+        self._rewards = {'out':-10, 'food':10, 'time':0, 'no_food':0}
         # start length is constrained to be less than half of board size
         self._start_length = min(start_length, (board_size-2)//2)
         # set numpy seed for reproducible results
@@ -226,13 +226,13 @@ class Snake:
 
     def _get_food_reward(self):
         ''' try different rewards schemes for when food is eaten '''
-        return((self._snake_length - self._start_length + 1) * self._reward['food'])
-        # return self._reward['food']
+        return((self._snake_length - self._start_length + 1) * self._rewards['food'])
+        # return self._rewards['food']
 
     def _get_death_reward(self):
         ''' try different rewards schemes for death '''
-        return((self._snake_length - self._start_length + 1) * self._reward['out'])
-        # return self._reward['out']
+        return((self._snake_length - self._start_length + 1) * self._rewards['out'])
+        # return self._rewards['out']
 
     def _check_if_done(self, action):
         '''
@@ -243,7 +243,7 @@ class Snake:
             can_eat_food : whether the current action leads to eating food
         '''
         reward, done, can_eat_food, termination_reason = \
-                            self._reward['time'], 0, 0, ''
+                            self._rewards['time'], 0, 0, ''
         # check if the current action forces snake out of board
         new_head = self._get_new_head(action, self._snake_direction)
         while(1):
@@ -267,10 +267,15 @@ class Snake:
                 reward += self._get_food_reward()
                 self._count_food += 1
                 can_eat_food = 1
-            # check if time is up, can happen even if food is eaten
+            # check if time up
             if(self._time >= self._max_time_limit):
                 done = 1
-                termination_reason = 'time_up'
+                # check if no food eaten
+                if(self._snake_length == self._start_length and self._rewards['no_food'] != 0):
+                    termination_reason = 'time_up_no_food'
+                    reward += self._rewards['no_food']
+                else:
+                    termination_reason = 'time_up'
                 break
             # if normal movement, no other updates needed
             break
