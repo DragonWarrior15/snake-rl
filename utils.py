@@ -177,7 +177,7 @@ def plot_from_logs(data, title="Rewards and Loss Curve for Agent",
     axs[0].set_ylabel('Mean Reward')
     axs[0].set_title(title)
     for i in range(loss_count):
-        axs[i+1].plot(data['iteration'], data['loss_{:d}'.format(i) if loss_count > 1 else data['loss']])
+        axs[i+1].plot(data['iteration'], data['loss_{:d}'.format(i) if loss_count > 1 else 'loss'])
         axs[i+1].set_ylabel(loss_titles[i])
         axs[i+1].set_xlabel('Iteration')
     plt.tight_layout()
