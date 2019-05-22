@@ -85,6 +85,35 @@
             "optimizer"      :"RMSprop(0.0005)",
             "training_range" :178000
         },
+        "v10.1":{
+            "agent_type"     :"DeepQLearningAgent",
+            "reward"         :"-10/10 reward",
+            "conv_filters"   :"16, 32 filters of (4,4)",
+            "dense"          :64,
+            "batch_size"     :64,
+            "reward_changing":"constant",
+            "board_size"     :10,
+            "frames"         :2,
+            "buffer_size"    :60000,
+            "optimizer"      :"RMSprop(0.0005)",
+            "training_range" :50000,
+            "max_time_limit" :198,
+        },
+        },
+        "v10.2":{
+            "agent_type"     :"DeepQLearningAgent",
+            "reward"         :"-1/1 reward, -0.1 time",
+            "conv_filters"   :"16, 32 filters of (4,4)",
+            "dense"          :64,
+            "batch_size"     :64,
+            "reward_changing":"(length-initial_length)*(food_reward)",
+            "board_size"     :10,
+            "frames"         :2,
+            "buffer_size"    :60000,
+            "optimizer"      :"RMSprop(0.0005)",
+            "training_range" :60000,
+            "max_time_limit" :298,
+        },
         "v11":{
             "agent_type"     :"PolicyGradientAgent",
             "reward"         :"-10/10 reward",
@@ -96,22 +125,44 @@
             "frames"         :2,
             "buffer_size"    :60000,
             "optimizer"      :"RMSprop(0.0005)",
-            "training_range" :100000
+            "training_range" :100000,
+            "max_time_limit" :198,
+            "others"         :"rewards normalized before input to training function\n
+                               policy gradient mean over timesteps, entropy sum over timesteps"
         },
         "v12":{
             "agent_type"     :"PolicyGradientAgent",
             "reward"         :"-10/10 reward",
+            "conv_filters"   :"4, 8 filters of (2,2)",
+            "dense"          :16,
+            "batch_size"     :"1",
+            "reward_changing":"(length-initial_length)*(food_reward)",
+            "board_size"     :6,
+            "frames"         :2,
+            "buffer_size"    :2000,
+            "optimizer"      :"RMSprop(0.01)",
+            "training_range" :10000,
+            "entropy_coef"   :0.01,
+            "max_time_limit" :198,
+            "others"         :"rewards not normalized before input to training function\n
+                               policy gradient mean over epsiodes, entropy sum over timesteps+epsiodes"
+        },
+        "v13":{
+            "agent_type"     :"PolicyGradientAgent",
+            "reward"         :"-10/10 reward",
             "conv_filters"   :"16, 32 filters of (4,4)",
             "dense"          :64,
-            "batch_size"     :"epsiode length",
-            "reward_changing":"(length-initial_length)*(food_reward)",
+            "batch_size"     :"1",
+            "reward_changing":"constant",
             "board_size"     :10,
             "frames"         :2,
-            "buffer_size"    :60000,
+            "buffer_size"    :2000,
             "optimizer"      :"RMSprop(0.01)",
-            "training_range" :100000,
-            "others"         :"rewards normalized before input to training function\n
-                               leads to 30x reduction in training speed"
+            "training_range" :10000,
+            "entropy_coef"   :0.01,
+            "max_time_limit" :198,
+            "others"         :"rewards not normalized before input to training function\n
+                               policy gradient mean over epsiodes, entropy mean over epsiodes"
         }
     }
 }

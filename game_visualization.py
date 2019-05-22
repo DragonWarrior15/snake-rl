@@ -10,9 +10,9 @@ import keras.backend as K
 # some global variables
 board_size = 10
 frames = 2
-version = 'v10'
-iteration_list = [174500]
-max_time_limit = 198
+version = 'v10.2'
+iteration_list = [196000]
+max_time_limit = 598
 
 # setup the environment
 env = Snake(board_size=board_size, frames=frames, max_time_limit=max_time_limit)

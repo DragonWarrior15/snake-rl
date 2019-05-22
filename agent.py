@@ -58,13 +58,18 @@ class DeepQLearningAgent():
             self._target_net = self._agent_model()
             self.update_target_net()
 
-    def _get_model_outputs(self, board, model=None):
-        ''' get action value '''
-        if model is None:
-            model = self._model
+    def _prepare_intput(self, board):
+        ''' reshape input and normalize '''
         if(board.ndim == 3):
             board = board.reshape((1,) + self._input_shape)
         board = self._normalize_board(board.copy())
+        return board.copy()
+
+    def _get_model_outputs(self, board, model=None):
+        ''' get action value '''
+        board = self._prepare_intput(board)
+        if model is None:
+            model = self._model
         model_outputs = model.predict_on_batch(board)
         return model_outputs
 
@@ -83,7 +88,6 @@ class DeepQLearningAgent():
         returns the model which evaluates q values for a given state input
         '''
         input_board = tf.keras.layers.Input((self._board_size, self._board_size, self._n_frames,))
-        # total rows + columns + diagonals is total units
         x = tf.keras.layers.Conv2D(16, (4,4), activation = 'relu', data_format='channels_last')(input_board)
         x = tf.keras.layers.Conv2D(32, (4,4), activation = 'relu', data_format='channels_last')(x)
         x = tf.keras.layers.Flatten()(x)
@@ -94,6 +98,16 @@ class DeepQLearningAgent():
         model.compile(optimizer = tf.keras.optimizers.RMSprop(0.0005), loss = 'mean_squared_error')
 
         return model
+
+    def get_action_proba(self, board):
+        ''' returns the action probability values '''
+        model_outputs = self._get_model_outputs(board, self._model)[0]
+        # subtracting max and taking softmax does not change output
+        # do this for numerical stability
+        model_outputs = model_outputs - max(model_outputs)
+        model_outputs = np.exp(model_outputs)
+        model_outputs = model_outputs/np.sum(model_outputs)
+        return model_outputs
 
     def save_model(self, file_path = '', iteration = None):
         ''' save the current models '''
@@ -185,7 +199,6 @@ class PolicyGradientAgent(DeepQLearningAgent):
         returns the model which evaluates probability values for given state input
         '''
         input_board = tf.keras.layers.Input((self._board_size, self._board_size, self._n_frames,))
-        # total rows + columns + diagonals is total units
         x = tf.keras.layers.Conv2D(16, (4,4), activation = 'relu', data_format='channels_last')(input_board)
         x = tf.keras.layers.Conv2D(32, (4,4), activation = 'relu', data_format='channels_last')(x)
         x = tf.keras.layers.Flatten()(x)
@@ -199,7 +212,7 @@ class PolicyGradientAgent(DeepQLearningAgent):
 
         return model
 
-    def _policy_gradient_updates(self):
+    def _policy_gradient_updates(self, lr=0.001):
         ''' a custom function for policy gradient losses '''
         target = tf.keras.backend.placeholder(name='r', shape=(None, 1))
         beta = tf.keras.backend.placeholder(name='beta', shape=())
@@ -212,7 +225,7 @@ class PolicyGradientAgent(DeepQLearningAgent):
         entropy = -tf.tensordot(policy, log_policy, axes=2)/num_games
         loss = -J - beta*entropy
         # fit
-        optimizer = tf.keras.optimizers.RMSprop(0.001)
+        optimizer = tf.keras.optimizers.RMSprop(lr)
         updates = optimizer.get_updates(loss, self._model.trainable_weights)
         model = tf.keras.backend.function([self._model.input, target, beta, num_games],
                             [loss, J, entropy], updates=updates)
@@ -238,22 +251,10 @@ class PolicyGradientAgent(DeepQLearningAgent):
             else:
                 r = (r - np.mean(r))/np.std(r)
         target = np.multiply(a, r)
-        loss = self._update_function([self._normalize_board(s.copy()), target, beta, num_games])
+        loss = self._update_function([self._prepare_intput(s), target, beta, num_games])
         return loss[0] if len(loss)==1 else loss
 
-    def get_action_proba(self, board):
-        '''
-        returns the action probability values as policy graident is on policy
-        '''
-        model_outputs = self._get_model_outputs(board, self._model)[0]
-        # subtracting max and taking softmax does not change output
-        # do this for numerical stability
-        model_outputs = model_outputs - max(model_outputs)
-        model_outputs = np.exp(model_outputs)
-        model_outputs = model_outputs/np.sum(model_outputs)
-        return model_outputs
-
-class QActorCriticAgent(DeepQLearningAgent):
+class AdvantageActorCriticAgent(DeepQLearningAgent):
     '''
     this agent is only different from dqn agent in terms of the algorithm
     for calculating the best actions in a state, we will use Q actor critic here
@@ -264,14 +265,13 @@ class QActorCriticAgent(DeepQLearningAgent):
                                 buffer_size=buffer_size, gamma=gamma,
                                 n_actions=n_actions, use_target_net=False)
         self._action_values_model = self._agent_action_values_model()
-        self._actor_update, self._critic_update = self._actor_critic_updates()
+        self._actor_update = self._policy_gradient_updates(lr=0.001)
 
     def _agent_model(self):
         '''
         returns the model which evaluates probability values for given state input
         '''
         input_board = tf.keras.layers.Input((self._board_size, self._board_size, self._n_frames,))
-        # total rows + columns + diagonals is total units
         x = tf.keras.layers.Conv2D(16, (4,4), activation='relu', data_format='channels_last')(input_board)
         x = tf.keras.layers.Conv2D(32, (4,4), activation='relu', data_format='channels_last')(x)
         x = tf.keras.layers.Flatten()(x)
@@ -286,58 +286,25 @@ class QActorCriticAgent(DeepQLearningAgent):
         return model
 
     def _agent_action_values_model(self):
-        action_values = tf.keras.layers.Dense(self._n_actions, activation='linear',
+        action_values = tf.keras.layers.Dense(1, activation='linear',
                         name='action_values')(self._model.get_layer('dense'))
         model = tf.keras.Model(inputs=self._model.input, out=action_values)
-
-    def _actor_critic_updates(self):
-        ''' a custom function for policy gradient losses '''
-        actions = tf.keras.backend.placeholder(name='a', shape=(None, 1))
-        rewards = tf.keras.backend.placeholder(name='r', shape=(None, 1))
-        done = tf.keras.backend.placeholder(name='done', shape=(None, 1))
-        beta = tf.keras.backend.placeholder(name='beta', shape=())
-        num_games = tf.keras.backend.placeholder(name='num_games', shape=())
-        action_values_s = tf.keras.backend.placeholder(name='action_values_s', shape=(None, self._n_actions))
-        action_values_next_s = tf.keras.backend.placeholder(name='action_values_next_s', shape=(None, self._n_actions))
-
-        # calculate policy
-        policy = tf.nn.softmax(self._model.output)
-        log_policy = tf.nn.log_softmax(self._model.output)
-
-        # calculate actor loss
-        J = tf.reduce_sum(tf.multiply(tf.multiply(actions, log_policy), action_values_s))/num_games
-        entropy = -tf.tensordot(policy, log_policy, axes=2)/num_games
-        actor_loss = -J - beta*entropy
-        # fit actor model
-        actor_optimizer = tf.keras.optimizers.RMSprop(0.001)
-        model_weights = self._model.trainable_weights
-        actor_updates = actor_optimizer.get_updates(actor_loss, self._model.trainable_weights)
-        actor_update = tf.keras.backend.function([self._model.input, actions, beta, action_values_s num_games],
-                            [actor_loss, J, entropy], updates=updates)
-        # calculate critic loss
-        critic_target = tf.multiply(actions, rewards + self._gamma * tf.multiply(action_values_next_s * 1-done)) + tf.multiply(1-actions, action_values_s)
-        critic_loss = tf.losses.mean_squared_error(critic_target, self._action_values_model.output)
-        # fit critic model
-        critic_optimizer = tf.keras.optimizers.RMSprop(0.001)
-        critic_model_weights = model_weights[:-1] + [action_values]
-        critic_updates = critic_optimizer.get_updates(critic_loss, self._model.trainable_weights)
-        critic_update = tf.keras.backend.function([self._model.input, actions, rewards, action_values_s, action_values_next_s],
-                        [critic_loss], updates=updates)
-
-        return actor_update, critic_update
+        model.compile(optimizer=tf.keras.optimizers.RMSprop(0.0005), loss='mean_squared_error')
+        return model
 
     def train_agent(self, batch_size=32, beta=0.01, normalize_rewards=False,
                     num_games=1):
         '''
         train the model by sampling from buffer and return the error
         Returns:
-            error (float) : the current loss
+            error (float/list) : the current loss
         '''
         # in policy gradient, only one complete episode is used for training
         s, a, r, next_s, done = self._buffer.sample(self._buffer.get_current_size())
         # unlike DQN, the discounted reward is not estimated
         # we have defined custom actor and critic losses functions above
         # use that to train to agent model
+
         # normzlize the rewards for training stability, does not work in practice
         if(normalize_rewards):
             if((r == r[0][0]).sum() == r.shape[0]):
@@ -345,18 +312,16 @@ class QActorCriticAgent(DeepQLearningAgent):
                 r -= r
             else:
                 r = (r - np.mean(r))/np.std(r)
-        actor_loss = self._update_function([self._normalize_board(s.copy()), target, beta, num_games])
-        critic_loss = 
-        return loss[0] if len(loss)==1 else loss
 
-    def get_action_proba(self, board):
-        '''
-        returns the action probability values as policy graident is on policy
-        '''
-        model_outputs = self._get_model_outputs(board, self._model)[0]
-        # subtracting max and taking softmax does not change output
-        # do this for numerical stability
-        model_outputs = model_outputs - max(model_outputs)
-        model_outputs = np.exp(model_outputs)
-        model_outputs = model_outputs/np.sum(model_outputs)
-        return model_outputs
+        model = self._action_values_model
+        # calculate target for actor (uses advantage)
+        actor_target = a * (r + self._gamma * self._get_model_outputs(next_s, model=model) - self._get_model_outputs(s, model=model))
+        actor_loss = self._actor_update([self._prepare_intput(s), target, beta, num_games])
+
+        # calculate target for critic
+        critic_target = (r + self._gamma * self._get_model_outputs(next_s, model=model)) * (1 - done)
+        critic_target = a * critic_target + (1 - a) * self._get_model_outputs(s, model=model)
+        critic_loss = self._model.train_on_batch(self._prepare_intput(s), critic_target)
+
+        loss = actor_loss + [critic_loss]
+        return loss[0] if len(loss)==1 else loss
