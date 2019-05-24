@@ -12,12 +12,12 @@ import pandas as pd
 import time
 from utils import play_game
 from game_environment import Snake
-from agent import DeepQLearningAgent, PolicyGradientAgent
+from agent import DeepQLearningAgent, PolicyGradientAgent, AdvantageActorCriticAgent
 
 # some global variables
 board_size = 10
 frames = 2
-version = 'v10.2'
+version = 'v13'
 max_time_limit = 198 # 998
 
 
@@ -27,8 +27,9 @@ s = env.reset()
 n_actions = env.get_num_actions()
 
 # setup the agent
-# agent = PolicyGradientAgent(board_size=board_size, frames=frames, buffer_size=2000)
-agent = DeepQLearningAgent(board_size=board_size, frames=frames, buffer_size=60000)
+# agent = DeepQLearningAgent(board_size=board_size, frames=frames, buffer_size=60000)
+agent = PolicyGradientAgent(board_size=board_size, frames=frames, buffer_size=2000)
+# agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, buffer_size=2000)
 # agent.print_models()
 
 # check in the same order as class hierarchy
@@ -36,6 +37,8 @@ if(isinstance(agent, DeepQLearningAgent)):
     agent_type = 'DeepQLearningAgent'
 if(isinstance(agent, PolicyGradientAgent)):
     agent_type = 'PolicyGradientAgent'
+if(isinstance(agent, AdvantageActorCriticAgent)):
+    agent_type = 'AdvantageActorCriticAgent'
 print('Agent is {:s}'.format(agent_type))
 
 # setup the epsilon range and decay rate for epsilon
@@ -44,16 +47,24 @@ if(agent_type in ['DeepQLearningAgent']):
     epsilon, epsilon_end = 1, 0.01
     reward_type = 'current'
     sample_actions = False
+    n_games_training = 10
 if(agent_type in ['PolicyGradientAgent']):
     epsilon, epsilon_end = -1, -1
     reward_type = 'discounted_future'
     sample_actions = True
     exploration_threshold = 0.1
+    n_games_training = 16
+if(agent_type in ['AdvantageActorCriticAgent']):
+    epsilon, epsilon_end = -1, -1
+    reward_type = 'current'
+    sample_actions = True
+    exploration_threshold = 0.1
+    n_games_training = 10
 
 # define no of episodes, loggin frequency
-episodes = 2 * (10**5)
+episodes = 2 * (10**1)
 decay = 0.99
-log_frequency = 500
+log_frequency = 1
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
 # use only for DeepQLearningAgent
@@ -66,11 +77,12 @@ if(agent_type in ['DeepQLearningAgent']):
 model_logs = {'iteration':[], 'reward_mean':[], 'reward_dev':[], 'loss':[]}
 for index in tqdm(range(episodes)):
     # make small changes to the buffer and slowly train
-    current_rewards = play_game(env, agent, n_actions, epsilon=epsilon, n_games=1, record=True,
+    current_rewards = play_game(env, agent, n_actions, epsilon=epsilon,
+                        n_games=n_games_training, record=True,
                     sample_actions=sample_actions, reward_type=reward_type)
     loss = agent.train_agent(batch_size=64, num_games=len(current_rewards))
 
-    if(agent_type in ['PolicyGradientAgent']):
+    if(agent_type in ['PolicyGradientAgent', 'AdvantageActorCriticAgent']):
         # for policy gradient algorithm, we only take current episodes for training
         agent.reset_buffer()
 
@@ -81,8 +93,8 @@ for index in tqdm(range(episodes)):
         current_rewards = play_game(env, agent, n_actions, n_games=10, epsilon=-1,
                                     record=False)
         model_logs['iteration'].append(index+1)
-        model_logs['reward_mean'].append(np.mean(current_rewards))
-        model_logs['reward_dev'].append(np.std(current_rewards))
+        model_logs['reward_mean'].append(round(np.mean(current_rewards), 2))
+        model_logs['reward_dev'].append(round(np.std(current_rewards), 2))
         pd.DataFrame(model_logs)[['iteration', 'reward_mean', 'reward_dev', 'loss']].to_csv('model_logs/{:s}.csv'.format(version), index=False)
 
     # copy weights to target network and save models

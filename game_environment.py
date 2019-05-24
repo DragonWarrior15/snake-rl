@@ -57,7 +57,7 @@ class Snake:
         self._n_actions = 3
         self._board_size = board_size
         self._n_frames = frames
-        self._rewards = {'out':-10, 'food':10, 'time':-0.1, 'no_food':0}
+        self._rewards = {'out':-10, 'food':10, 'time':0, 'no_food':-10}
         # start length is constrained to be less than half of board size
         self._start_length = min(start_length, (board_size-2)//2)
         # set numpy seed for reproducible results

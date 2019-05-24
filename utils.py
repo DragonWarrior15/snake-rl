@@ -44,7 +44,7 @@ def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
             else:
                 if(sample_actions):
                     probs = agent.get_action_proba(s)
-                    action = np.random.choice(list(range(n_actions)), p=probs)
+                    action = np.random.choice(n_actions, p=probs)
                 else:
                     action = agent.move(s)
             next_s, reward, done, info = env.step(action)

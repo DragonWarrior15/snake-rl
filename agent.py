@@ -164,6 +164,7 @@ class DeepQLearningAgent():
         target = (1-a)*target + a*discounted_reward
         # fit
         loss = self._model.train_on_batch(self._normalize_board(s), target)
+        loss = round(loss, 5)
         return loss
 
     def update_target_net(self):
@@ -199,11 +200,12 @@ class PolicyGradientAgent(DeepQLearningAgent):
         returns the model which evaluates probability values for given state input
         '''
         input_board = tf.keras.layers.Input((self._board_size, self._board_size, self._n_frames,))
-        x = tf.keras.layers.Conv2D(16, (4,4), activation = 'relu', data_format='channels_last')(input_board)
-        x = tf.keras.layers.Conv2D(32, (4,4), activation = 'relu', data_format='channels_last')(x)
+        x = tf.keras.layers.Conv2D(16, (4,4), activation = 'relu', data_format='channels_last', kernel_initializer='glorot_normal')(input_board)
+        x = tf.keras.layers.Conv2D(32, (4,4), activation = 'relu', data_format='channels_last', kernel_initializer='glorot_normal')(x)
+        x = tf.keras.layers.Conv2D(64, (4,4), activation = 'relu', data_format='channels_last', kernel_initializer='glorot_normal')(x)
         x = tf.keras.layers.Flatten()(x)
-        x = tf.keras.layers.Dense(64, activation = 'relu')(x)
-        out = tf.keras.layers.Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
+        x = tf.keras.layers.Dense(64, activation = 'relu', kernel_initializer='glorot_normal')(x)
+        out = tf.keras.layers.Dense(self._n_actions, activation = 'linear', name = 'action_logits', kernel_initializer='glorot_normal')(x)
 
         model = tf.keras.Model(inputs = input_board, outputs = out)
         # do not compile the model here, but rather use the outputs separately
@@ -212,23 +214,23 @@ class PolicyGradientAgent(DeepQLearningAgent):
 
         return model
 
-    def _policy_gradient_updates(self, lr=0.001):
+    def _policy_gradient_updates(self, optimizer=tf.keras.optimizers.SGD(0.00005)):
         ''' a custom function for policy gradient losses '''
-        target = tf.keras.backend.placeholder(name='r', shape=(None, 1))
+        target = tf.keras.backend.placeholder(name='target', shape=(None, 3))
         beta = tf.keras.backend.placeholder(name='beta', shape=())
         num_games = tf.keras.backend.placeholder(name='num_games', shape=())
         # calculate policy
         policy = tf.nn.softmax(self._model.output)
         log_policy = tf.nn.log_softmax(self._model.output)
         # calculate loss
-        J = tf.reduce_sum(tf.multiply(target, log_policy))/num_games
+        J = tf.tensordot(target, log_policy, axes=2)/num_games
         entropy = -tf.tensordot(policy, log_policy, axes=2)/num_games
-        loss = -J - beta*entropy
+        loss = -(1-beta)*J - beta*entropy
         # fit
-        optimizer = tf.keras.optimizers.RMSprop(lr)
         updates = optimizer.get_updates(loss, self._model.trainable_weights)
+        # gradients = optimizer.get_gradients(loss, self._model.trainable_weights)
         model = tf.keras.backend.function([self._model.input, target, beta, num_games],
-                            [loss, J, entropy], updates=updates)
+                            [loss, J, entropy, tf.reduce_sum(self._model.output, axis=0)], updates=updates)
         return model
 
     def train_agent(self, batch_size=32, beta=0.01, normalize_rewards=False,
@@ -238,23 +240,21 @@ class PolicyGradientAgent(DeepQLearningAgent):
         Returns:
             error (float) : the current loss
         '''
-        # in policy gradient, only one complete episode is used for training
+        # in policy gradient, only complete episodes are used for training
         s, a, r, _, _ = self._buffer.sample(self._buffer.get_current_size())
         # unlike DQN, the discounted reward is not estimated but true one
         # we have defined custom policy graident loss function above
         # use that to train to agent model
         # normzlize the rewards for training stability
         if(normalize_rewards):
-            if((r == r[0][0]).sum() == r.shape[0]):
-                # std dev is zero
-                r -= r
-            else:
-                r = (r - np.mean(r))/np.std(r)
+            r = (r - np.mean(r))/(np.std(r) + 1e-8)
+        print(a.sum(axis=0))
         target = np.multiply(a, r)
         loss = self._update_function([self._prepare_intput(s), target, beta, num_games])
+        # loss = [round(x, 5) for x in loss]
         return loss[0] if len(loss)==1 else loss
 
-class AdvantageActorCriticAgent(DeepQLearningAgent):
+class AdvantageActorCriticAgent(PolicyGradientAgent):
     '''
     this agent is only different from dqn agent in terms of the algorithm
     for calculating the best actions in a state, we will use Q actor critic here
@@ -264,35 +264,30 @@ class AdvantageActorCriticAgent(DeepQLearningAgent):
         DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames,
                                 buffer_size=buffer_size, gamma=gamma,
                                 n_actions=n_actions, use_target_net=False)
-        self._action_values_model = self._agent_action_values_model()
-        self._actor_update = self._policy_gradient_updates(lr=0.001)
+        self._model, self._action_values_model = self._model
+        self._actor_update = self._policy_gradient_updates(optimizer=tf.keras.optimizers.Adam(1e-6))
 
     def _agent_model(self):
         '''
         returns the model which evaluates probability values for given state input
         '''
         input_board = tf.keras.layers.Input((self._board_size, self._board_size, self._n_frames,))
-        x = tf.keras.layers.Conv2D(16, (4,4), activation='relu', data_format='channels_last')(input_board)
-        x = tf.keras.layers.Conv2D(32, (4,4), activation='relu', data_format='channels_last')(x)
+        x = tf.keras.layers.Conv2D(4, (2,2), activation='relu', data_format='channels_last')(input_board)
+        x = tf.keras.layers.Conv2D(8, (2,2), activation='relu', data_format='channels_last')(x)
         x = tf.keras.layers.Flatten()(x)
-        x = tf.keras.layers.Dense(64, activation = 'relu', name='dense')(x)
+        x = tf.keras.layers.Dense(16, activation='relu', name='dense')(x)
         action_logits = tf.keras.layers.Dense(self._n_actions, activation='linear', name='action_logits')(x)
+        action_values = tf.keras.layers.Dense(1, activation='linear', name='action_values')(x)
 
-        model = tf.keras.Model(inputs = input_board, outputs = action_logits)
-        # do not compile the model here, but rather use the outputs separately
-        # in a training function to create any custom loss function
-        # model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
+        model_logits = tf.keras.Model(inputs=input_board, outputs=action_logits)
+        model_values = tf.keras.Model(inputs=input_board, outputs=action_values)
+        # do not compile the actor model here, the loss for that is separately
+        # calculated, compile critic model here as the loss is just mse
+        model_values.compile(optimizer=tf.keras.optimizers.RMSprop(0.0005), loss='mean_squared_error')
 
-        return model
+        return model_logits, model_values
 
-    def _agent_action_values_model(self):
-        action_values = tf.keras.layers.Dense(1, activation='linear',
-                        name='action_values')(self._model.get_layer('dense'))
-        model = tf.keras.Model(inputs=self._model.input, out=action_values)
-        model.compile(optimizer=tf.keras.optimizers.RMSprop(0.0005), loss='mean_squared_error')
-        return model
-
-    def train_agent(self, batch_size=32, beta=0.01, normalize_rewards=False,
+    def train_agent(self, batch_size=32, beta=0.001, normalize_rewards=False,
                     num_games=1):
         '''
         train the model by sampling from buffer and return the error
@@ -315,13 +310,13 @@ class AdvantageActorCriticAgent(DeepQLearningAgent):
 
         model = self._action_values_model
         # calculate target for actor (uses advantage)
-        actor_target = a * (r + self._gamma * self._get_model_outputs(next_s, model=model) - self._get_model_outputs(s, model=model))
-        actor_loss = self._actor_update([self._prepare_intput(s), target, beta, num_games])
+        actor_target = a * (r + self._gamma * self._get_model_outputs(next_s, model=model) * (1 - done) - self._get_model_outputs(s, model=model))
+        actor_loss = self._actor_update([self._prepare_intput(s), actor_target, beta, num_games])
 
         # calculate target for critic
         critic_target = (r + self._gamma * self._get_model_outputs(next_s, model=model)) * (1 - done)
         critic_target = a * critic_target + (1 - a) * self._get_model_outputs(s, model=model)
-        critic_loss = self._model.train_on_batch(self._prepare_intput(s), critic_target)
+        critic_loss = self._action_values_model.train_on_batch(self._prepare_intput(s), critic_target)
 
         loss = actor_loss + [critic_loss]
         return loss[0] if len(loss)==1 else loss
