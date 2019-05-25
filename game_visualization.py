@@ -11,7 +11,7 @@ import keras.backend as K
 board_size = 10
 frames = 2
 version = 'v13'
-iteration_list = [9200]
+iteration_list = [15600]
 max_time_limit = 98
 
 # setup the environment

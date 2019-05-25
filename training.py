@@ -15,10 +15,10 @@ from game_environment import Snake
 from agent import DeepQLearningAgent, PolicyGradientAgent, AdvantageActorCriticAgent
 
 # some global variables
-board_size = 10
-frames = 2
-version = 'v13'
-max_time_limit = 198 # 998
+board_size = 8
+frames = 1
+version = 'v10.3'
+max_time_limit = 298 # 998
 
 
 # setup the environment
@@ -27,8 +27,8 @@ s = env.reset()
 n_actions = env.get_num_actions()
 
 # setup the agent
-# agent = DeepQLearningAgent(board_size=board_size, frames=frames, buffer_size=60000)
-agent = PolicyGradientAgent(board_size=board_size, frames=frames, buffer_size=2000)
+agent = DeepQLearningAgent(board_size=board_size, frames=frames, buffer_size=60000)
+# agent = PolicyGradientAgent(board_size=board_size, frames=frames, buffer_size=2000)
 # agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, buffer_size=2000)
 # agent.print_models()
 
@@ -48,23 +48,25 @@ if(agent_type in ['DeepQLearningAgent']):
     reward_type = 'current'
     sample_actions = False
     n_games_training = 10
+    decay = 0.99
 if(agent_type in ['PolicyGradientAgent']):
     epsilon, epsilon_end = -1, -1
     reward_type = 'discounted_future'
     sample_actions = True
     exploration_threshold = 0.1
     n_games_training = 16
+    decay = 1
 if(agent_type in ['AdvantageActorCriticAgent']):
     epsilon, epsilon_end = -1, -1
     reward_type = 'current'
     sample_actions = True
     exploration_threshold = 0.1
     n_games_training = 10
+    decay = 1
 
 # define no of episodes, loggin frequency
-episodes = 2 * (10**1)
-decay = 0.99
-log_frequency = 1
+episodes = 1 * (10**6)
+log_frequency = 500
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
 # use only for DeepQLearningAgent

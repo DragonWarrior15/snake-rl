@@ -5,6 +5,12 @@ from replay_buffer import ReplayBuffer
 import numpy as np
 import time
 import tensorflow as tf
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras.optimizers import RMSprop, SGD, Adam
+import tensorflow.keras.backend as K
+from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense
+from tensorflow.keras import Model
+from tensorflow.keras.regularizers import l2
 
 def huber_loss(y_true, y_pred, delta=1):
     ''' keras implementation for huber loss '''
@@ -87,15 +93,15 @@ class DeepQLearningAgent():
         '''
         returns the model which evaluates q values for a given state input
         '''
-        input_board = tf.keras.layers.Input((self._board_size, self._board_size, self._n_frames,))
-        x = tf.keras.layers.Conv2D(16, (4,4), activation = 'relu', data_format='channels_last')(input_board)
-        x = tf.keras.layers.Conv2D(32, (4,4), activation = 'relu', data_format='channels_last')(x)
-        x = tf.keras.layers.Flatten()(x)
-        x = tf.keras.layers.Dense(64, activation = 'relu')(x)
-        out = tf.keras.layers.Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
+        input_board = Input((self._board_size, self._board_size, self._n_frames,))
+        x = Conv2D(16, (4,4), activation = 'relu', data_format='channels_last')(input_board)
+        x = Conv2D(32, (4,4), activation = 'relu', data_format='channels_last')(x)
+        x = Flatten()(x)
+        x = Dense(64, activation = 'relu')(x)
+        out = Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
 
-        model = tf.keras.Model(inputs = input_board, outputs = out)
-        model.compile(optimizer = tf.keras.optimizers.RMSprop(0.0005), loss = 'mean_squared_error')
+        model = Model(inputs = input_board, outputs = out)
+        model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
 
         return model
 
@@ -104,6 +110,7 @@ class DeepQLearningAgent():
         model_outputs = self._get_model_outputs(board, self._model)[0]
         # subtracting max and taking softmax does not change output
         # do this for numerical stability
+        model_outputs = np.clip(model_outputs, -10, 10)
         model_outputs = model_outputs - max(model_outputs)
         model_outputs = np.exp(model_outputs)
         model_outputs = model_outputs/np.sum(model_outputs)
@@ -136,8 +143,9 @@ class DeepQLearningAgent():
         ''' print the current models '''
         print('Training Model')
         print(self._model.summary())
-        print('Target Network')
-        print(self._target_net.summary())
+        if(self._use_target_net):
+            print('Target Network')
+            print(self._target_net.summary())
 
     def add_to_buffer(self, board, action, reward, next_board, done):
         '''
@@ -199,41 +207,43 @@ class PolicyGradientAgent(DeepQLearningAgent):
         '''
         returns the model which evaluates probability values for given state input
         '''
-        input_board = tf.keras.layers.Input((self._board_size, self._board_size, self._n_frames,))
-        x = tf.keras.layers.Conv2D(16, (4,4), activation = 'relu', data_format='channels_last', kernel_initializer='glorot_normal')(input_board)
-        x = tf.keras.layers.Conv2D(32, (4,4), activation = 'relu', data_format='channels_last', kernel_initializer='glorot_normal')(x)
-        x = tf.keras.layers.Conv2D(64, (4,4), activation = 'relu', data_format='channels_last', kernel_initializer='glorot_normal')(x)
-        x = tf.keras.layers.Flatten()(x)
-        x = tf.keras.layers.Dense(64, activation = 'relu', kernel_initializer='glorot_normal')(x)
-        out = tf.keras.layers.Dense(self._n_actions, activation = 'linear', name = 'action_logits', kernel_initializer='glorot_normal')(x)
+        input_board = Input((self._board_size, self._board_size, self._n_frames,))
+        x = Conv2D(16, (4,4), activation = 'relu', data_format='channels_last', kernel_regularizer=l2(0.01))(input_board)
+        x = Conv2D(32, (4,4), activation = 'relu', data_format='channels_last', kernel_regularizer=l2(0.01))(x)
+        x = Flatten()(x)
+        x = Dense(64, activation = 'relu', kernel_regularizer=l2(0.01))(x)
+        out = Dense(self._n_actions, activation = 'linear', name = 'action_logits', kernel_regularizer=l2(0.01))(x)
 
-        model = tf.keras.Model(inputs = input_board, outputs = out)
+        model = Model(inputs = input_board, outputs = out)
         # do not compile the model here, but rather use the outputs separately
         # in a training function to create any custom loss function
         # model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
-
         return model
 
-    def _policy_gradient_updates(self, optimizer=tf.keras.optimizers.SGD(0.00005)):
+    def _policy_gradient_updates(self, optimizer=RMSprop(0.00005)):
         ''' a custom function for policy gradient losses '''
-        target = tf.keras.backend.placeholder(name='target', shape=(None, 3))
-        beta = tf.keras.backend.placeholder(name='beta', shape=())
-        num_games = tf.keras.backend.placeholder(name='num_games', shape=())
+        target = K.placeholder(name='target', shape=(None, 3))
+        beta = K.placeholder(name='beta', shape=())
+        num_games = K.placeholder(name='num_games', shape=())
         # calculate policy
         policy = tf.nn.softmax(self._model.output)
+        # policy = self._model.output
         log_policy = tf.nn.log_softmax(self._model.output)
+        # to include negative rewards as well in the game
+        # positive_target = tf.dtypes.cast(tf.reshape(tf.math.greater(tf.reduce_sum(target, axis=1), 0), (-1, 1)), tf.float32)
+        # J_log_policy = tf.nn.log_softmax(positive_target * policy + (1 - positive_target) * (1 - policy))
         # calculate loss
-        J = tf.tensordot(target, log_policy, axes=2)/num_games
-        entropy = -tf.tensordot(policy, log_policy, axes=2)/num_games
-        loss = -(1-beta)*J - beta*entropy
+        J = tf.reduce_sum(tf.multiply(target, log_policy))/num_games
+        entropy = -tf.reduce_sum(tf.multiply(policy, log_policy))/num_games
+        loss = -J - beta*entropy
         # fit
         updates = optimizer.get_updates(loss, self._model.trainable_weights)
         # gradients = optimizer.get_gradients(loss, self._model.trainable_weights)
-        model = tf.keras.backend.function([self._model.input, target, beta, num_games],
-                            [loss, J, entropy, tf.reduce_sum(self._model.output, axis=0)], updates=updates)
+        model = K.function([self._model.input, target, beta, num_games],
+                            [loss, J, entropy], updates=updates)
         return model
 
-    def train_agent(self, batch_size=32, beta=0.01, normalize_rewards=False,
+    def train_agent(self, batch_size=32, beta=0.1, normalize_rewards=False,
                     num_games=1):
         '''
         train the model by sampling from buffer and return the error
@@ -248,7 +258,6 @@ class PolicyGradientAgent(DeepQLearningAgent):
         # normzlize the rewards for training stability
         if(normalize_rewards):
             r = (r - np.mean(r))/(np.std(r) + 1e-8)
-        print(a.sum(axis=0))
         target = np.multiply(a, r)
         loss = self._update_function([self._prepare_intput(s), target, beta, num_games])
         # loss = [round(x, 5) for x in loss]
@@ -271,19 +280,19 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
         '''
         returns the model which evaluates probability values for given state input
         '''
-        input_board = tf.keras.layers.Input((self._board_size, self._board_size, self._n_frames,))
-        x = tf.keras.layers.Conv2D(4, (2,2), activation='relu', data_format='channels_last')(input_board)
-        x = tf.keras.layers.Conv2D(8, (2,2), activation='relu', data_format='channels_last')(x)
-        x = tf.keras.layers.Flatten()(x)
-        x = tf.keras.layers.Dense(16, activation='relu', name='dense')(x)
-        action_logits = tf.keras.layers.Dense(self._n_actions, activation='linear', name='action_logits')(x)
-        action_values = tf.keras.layers.Dense(1, activation='linear', name='action_values')(x)
+        input_board = Input((self._board_size, self._board_size, self._n_frames,))
+        x = Conv2D(4, (2,2), activation='relu', data_format='channels_last')(input_board)
+        x = Conv2D(8, (2,2), activation='relu', data_format='channels_last')(x)
+        x = Flatten()(x)
+        x = Dense(16, activation='relu', name='dense')(x)
+        action_logits = Dense(self._n_actions, activation='linear', name='action_logits')(x)
+        action_values = Dense(1, activation='linear', name='action_values')(x)
 
-        model_logits = tf.keras.Model(inputs=input_board, outputs=action_logits)
-        model_values = tf.keras.Model(inputs=input_board, outputs=action_values)
+        model_logits = Model(inputs=input_board, outputs=action_logits)
+        model_values = Model(inputs=input_board, outputs=action_values)
         # do not compile the actor model here, the loss for that is separately
         # calculated, compile critic model here as the loss is just mse
-        model_values.compile(optimizer=tf.keras.optimizers.RMSprop(0.0005), loss='mean_squared_error')
+        model_values.compile(optimizer=RMSprop(0.0005), loss='mean_squared_error')
 
         return model_logits, model_values
 

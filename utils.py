@@ -52,10 +52,10 @@ def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
                 if(reward_type == 'current'):
                     agent.add_to_buffer(s, action, reward, next_s, done)
                 elif(reward_type == 'discounted_future'):
-                    s_list.append(s)
+                    s_list.append(s.copy())
                     action_list.append(action)
                     reward_list.append(reward)
-                    next_s_list.append(next_s)
+                    next_s_list.append(next_s.copy())
                     done_list.append(done)
                 else:
                     assert reward_type in ['current', 'discounted_future'], \
