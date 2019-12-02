@@ -329,3 +329,79 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
 
         loss = actor_loss + [critic_loss]
         return loss[0] if len(loss)==1 else loss
+
+class HamiltonianCycleAgent():
+    '''
+    this agent prepares a hamiltonian cycle through the board and then
+    follows it to reach the food
+    todo - add some optimizations for small snakes to use a*
+        board_size (int): side length of the board
+        frames (int): no of frames available in one board state
+        n_actions (int): no of actions available in the action space
+    '''
+    def __init__(self, board_size=10, frames=1, n_actions=3):
+        self._board_size = board_size
+        self._n_frames = frames
+        self._n_actions = n_actions
+        self._get_cycle()
+
+    def _get_neighbors(self, point):
+        '''
+        point is a single integer such that 
+        row = point//self._board_size
+        col = point%self._board_size
+        '''
+        row, col = point//self._board_size, point%self._board_size
+        neighbors = []
+        for delta_row, delta_col in [[-1,0], [1,0], [0,1], [0,-1]]:
+            new_row, new_col = row + delta_row, col + delta_col
+            # print(point, row, col, new_row, new_col)
+            # print(0 <= new_row, new_row <= self._board_size-1)
+            # print(0 <= new_col, new_col <= self._board_size-1)
+            if(0 <= new_row and new_row <= self._board_size-1 and\
+               0 <= new_col and new_col <= self._board_size-1):
+                neighbors.append(new_row*self._board_size + new_col)
+        return neighbors
+
+    def _hamil_util(self):
+        neighbors = self._get_neighbors(self._cycle[self._index])
+        if(self._index == (self._board_size**2)-1):
+            if(0 in neighbors):
+                # end of path and cycle
+                return True
+            else:
+                # end of path but not cycle
+                return False
+        else:
+            for i in neighbors:
+                if(i not in self._cycle_set):
+                    self._index += 1
+                    self._cycle[self._index] = i
+                    self._cycle_set.add(i)
+                    ret = self._hamil_util()
+                    if(ret):
+                        return True
+                    else:
+                        # remove the element and backtrack
+                        self._cycle_set.remove(self._cycle[self._index])
+                        self._index -= 1
+            # if all neighbors in cycle set
+            return False
+
+    def _get_cycle(self):
+        '''
+        given a square board size, calculate a hamiltonian cycle through
+        the graph, use it to follow the board, the _cycle variable is a list
+        of tuples which tells the next coordinates to go to
+        '''
+        self._cycle = np.zeros((self._board_size ** 2,))
+        self._cycle_set = set([0])
+        # calculate the cycle path, start at 0, 0
+        self._index = 0
+        cycle_possible = self._hamil_util()
+        print(cycle_possible)
+
+    def move(self, board):
+        ''' get the action using agent policy '''
+        model_outputs = self._get_model_outputs(board, self._model)
+        return int(np.argmax(model_outputs))
