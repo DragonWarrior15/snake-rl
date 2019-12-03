@@ -71,7 +71,7 @@ def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
     return rewards
 
 def visualize_game(env, agent, path='images/game_visual.png', debug=False,
-                    animate=False):
+                    animate=False, fps=10):
     print('Starting Visualization')
     game_images = []
     qvalues = []
@@ -82,7 +82,7 @@ def visualize_game(env, agent, path='images/game_visual.png', debug=False,
     game_images.append([s[:,:,0], 0])
     done = 0
     while(not done):
-        a = agent.move(s)
+        a = agent.move(s, env.get_head_value())
         next_s, r, done, info = env.step(a)
         qvalues.append(agent._get_model_outputs(s)[0])
         food_count.append(info['food'])
@@ -103,7 +103,7 @@ def visualize_game(env, agent, path='images/game_visual.png', debug=False,
                               repeat=True, init_func=None,
                               fargs=(axs, color_map, food_count, qvalues))
         # anim.save(path, writer='imagemagick', fps=5) # too much memory intensive
-        anim.save(path, writer=animation.writers['ffmpeg'](fps=10, metadata=dict(artist='Me'), bitrate=1800))
+        anim.save(path, writer=animation.writers['ffmpeg'](fps=fps, metadata=dict(artist='Me'), bitrate=1800))
     else:
         ncols = 5
         nrows = len(game_images)//ncols + (1 if len(game_images)%ncols > 0 else 0)

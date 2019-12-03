@@ -4,7 +4,8 @@ Code for training a Deep Reinforcement Learning (DQN) agent to play the game of 
 The agent takes 2 frames of the game as input (image) and predicts the action values for
 the next action to take.
 ***
-<img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v10_174500_4.gif" alt="model v10 agent"><img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v10_174500_0_.gif" alt="model v10 agent">
+<img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v10_174500_4.gif" alt="model v10 agent" title="DeepQLearningAgent"><img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v10_174500_0_.gif" alt="model v10 agent" title="DeepQLearningAgent">
+<img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v14_0_0.gif" alt="model v14 agent" title="HamiltonianCycleAgent">
 ***
 
 ## Code Structure

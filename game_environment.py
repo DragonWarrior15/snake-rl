@@ -53,7 +53,7 @@ class Snake:
         '''
         # self._value = {'snake':255, 'board':0, 'food':128, 'head':180, 'border':80}
         self._value = {'snake':1, 'board':0, 'food':3, 'head':2, 'border':4}
-        self._actions = [-1, 0, 1] # -1 left, 0 nothing, 1 right
+        self._actions = [-1, 0, 1] # -1 right, 0 nothing, 1 left
         self._n_actions = 3
         self._board_size = board_size
         self._n_frames = frames
@@ -62,7 +62,7 @@ class Snake:
         self._start_length = min(start_length, (board_size-2)//2)
         # set numpy seed for reproducible results
         # np.random.seed(seed)
-        # time limit to contain length of game
+        # time limit to contain length of game, -1 means runu till end
         self._max_time_limit = max_time_limit
         # other variables that can be quickly reused across multiple games
         self._static_board_template = self._value['board'] * np.ones((self._board_size, self._board_size))
@@ -85,8 +85,11 @@ class Snake:
     def print_game(self):
         ''' prints the current state (board) '''
         fig, axs = plt.subplots(1, self._n_frames)
-        for i in range(self._n_frames):
-            axs[i].imshow(self._board[i], cmap = 'gray')
+        if(self._n_frames == 1):
+            axs.imshow(self._board[0], cmap = 'gray')
+        else:
+            for i in range(self._n_frames):
+                axs[i].imshow(self._board[i], cmap = 'gray')
         plt.show()
 
     def get_board_size(self):
@@ -96,6 +99,10 @@ class Snake:
     def get_n_frames(self):
         ''' get frame count '''
         return self._n_frames
+
+    def get_head_value(self):
+        ''' get color of head '''
+        return self._value['head']
 
     def reset(self):
         '''
@@ -133,7 +140,7 @@ class Snake:
         return self._n_actions
 
     def _action_map(self, action):
-        ''' converts integer to internatl action mapping '''
+        ''' converts integer to internal action mapping '''
         return self._actions[action]
 
     def _get_snake_tail(self):
@@ -151,18 +158,22 @@ class Snake:
         the cells with snake and choose amongst the remaining
         since board has borders, food cannot be at them
         '''
-        while(1):
-            food_x = list(range(1,self._board_size-1))
-            food_x = np.random.choice(food_x)
+        # create a random ordering for x
+        ord_x = list(range(1,self._board_size-1))
+        np.random.shuffle(ord_x)
+        found = False
+        for x in ord_x:
             food_y = [i for i in range(1, self._board_size-1) \
-                        if self._board[0][food_x, i] == self._value['board']]
+                        if self._board[0][x, i] == self._value['board']]
             if(len(food_y) == 0):
                 continue
             else:
                 food_y = np.random.choice(food_y)
+                self._food = Position(x, food_y)
+                self._put_food()
+                found = True
                 break
-        self._food = Position(food_x, food_y)
-        self._put_food()
+
 
     def _put_food(self):
         ''' put the food in the required spot '''
@@ -247,6 +258,13 @@ class Snake:
         # check if the current action forces snake out of board
         new_head = self._get_new_head(action, self._snake_direction)
         while(1):
+            # check if no position available for food
+            if((self._board[0] == self._value['board']).sum() == 0 and \
+               (self._board[0] == self._value['food']).sum() == 0):
+                done = 1
+                reward += self._get_food_reward()
+                termination_reason = 'game_end'
+                break
             # snake is colliding with border/obstacles
             if(self._board[0][new_head.row, new_head.col] == self._value['border']):
                 done = 1
@@ -268,7 +286,7 @@ class Snake:
                 self._count_food += 1
                 can_eat_food = 1
             # check if time up
-            if(self._time >= self._max_time_limit):
+            if(self._time >= self._max_time_limit and self._max_time_limit != -1):
                 done = 1
                 # check if no food eaten
                 if(self._snake_length == self._start_length and self._rewards['no_food'] != 0):

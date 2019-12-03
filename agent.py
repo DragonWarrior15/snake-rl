@@ -84,7 +84,7 @@ class DeepQLearningAgent():
         return board.copy()
         # return((board/128.0 - 1).copy())
 
-    def move(self, board):
+    def move(self, board, head=0):
         ''' get the action using agent policy '''
         model_outputs = self._get_model_outputs(board, self._model)
         return int(np.argmax(model_outputs))
@@ -329,3 +329,170 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
 
         loss = actor_loss + [critic_loss]
         return loss[0] if len(loss)==1 else loss
+
+class HamiltonianCycleAgent():
+    '''
+    this agent prepares a hamiltonian cycle through the board and then
+    follows it to reach the food
+    board has a wall on the outermost boundary
+    todo - add some optimizations for small snakes to use a*
+        board_size (int): side length of the board
+        frames (int): no of frames available in one board state
+        n_actions (int): no of actions available in the action space
+    '''
+    def __init__(self, board_size=10, frames=1, n_actions=3, **kwargs):
+        assert board_size%2 == 0, "Board size should be odd for hamiltonian cycle"
+        self._board_size = board_size
+        self._n_frames = frames
+        self._n_actions = n_actions
+        # self._get_cycle()
+        self._get_cycle_square()
+        self._board_grid = np.arange(0, self._board_size**2)\
+                             .reshape(self._board_size, -1)
+    
+    def _get_neighbors(self, point):
+        '''
+        point is a single integer such that 
+        row = point//self._board_size
+        col = point%self._board_size
+        '''
+        row, col = point//self._board_size, point%self._board_size
+        neighbors = []
+        for delta_row, delta_col in [[-1,0], [1,0], [0,1], [0,-1]]:
+            new_row, new_col = row + delta_row, col + delta_col
+            if(1 <= new_row and new_row <= self._board_size-2 and\
+               1 <= new_col and new_col <= self._board_size-2):
+                neighbors.append(new_row*self._board_size + new_col)
+        return neighbors
+
+    def _hamil_util(self):
+        neighbors = self._get_neighbors(self._cycle[self._index])
+        if(self._index == ((self._board_size-2)**2)-1):
+            if(self._start_point in neighbors):
+                # end of path and cycle
+                return True
+            else:
+                # end of path but not cycle
+                return False
+        else:
+            for i in neighbors:
+                if(i not in self._cycle_set):
+                    self._index += 1
+                    self._cycle[self._index] = i
+                    self._cycle_set.add(i)
+                    ret = self._hamil_util()
+                    if(ret):
+                        return True
+                    else:
+                        # remove the element and backtrack
+                        self._cycle_set.remove(self._cycle[self._index])
+                        self._index -= 1
+            # if all neighbors in cycle set
+            return False
+
+    def _get_cycle(self):
+        '''
+        given a square board size, calculate a hamiltonian cycle through
+        the graph, use it to follow the board, the _cycle variable is a list
+        of tuples which tells the next coordinates to go to
+        note that the board starts at row 1, col 1
+        '''
+        self._start_point = 1*self._board_size + 1
+        self._cycle = np.zeros(((self._board_size-2) ** 2,))
+        # calculate the cycle path, start at 0, 0
+        self._index = 0
+        self._cycle[self._index] = self._start_point
+        self._cycle_set = set([self._start_point])
+        cycle_possible = self._hamil_util()
+
+    def _get_cycle_square(self):
+        '''
+        simple implementation to get the hamiltonian cycle
+        for square board, by traversing in a up and down fashion
+        all movement code is based on this implementation
+        '''
+        self._cycle = np.zeros(((self._board_size-2) ** 2,), dtype=np.int64)
+        index = 0
+        sp = 1*self._board_size + 1
+        while(index < self._cycle.shape[0]):
+            if(index == 0):
+                # put as is
+                pass
+            elif((sp//self._board_size) == 2 and (sp%self._board_size) == self._board_size-2):
+                # at the point where we go up and then left to
+                # complete the cycle, go up once
+                sp = ((sp//self._board_size)-1)*self._board_size + (sp%self._board_size)
+            elif(index != 1 and sp//self._board_size == 1):
+                # keep going left to complete cycle
+                sp = ((sp//self._board_size))*self._board_size + ((sp%self._board_size)-1)
+            elif((sp%self._board_size)%2 == 1):
+                # go down till possible
+                sp = ((sp//self._board_size)+1)*self._board_size + (sp%self._board_size)
+                if(sp//self._board_size == self._board_size-1):
+                    # should have turned right instead of goind down
+                    sp = ((sp//self._board_size)-1)*self._board_size + ((sp%self._board_size)+1)
+            else:
+                # go up till the last but one row
+                sp = ((sp//self._board_size)-1)*self._board_size + (sp%self._board_size)
+                if(sp//self._board_size == 1):
+                    # should have turned right instead of goind up
+                    sp = ((sp//self._board_size)+1)*self._board_size + ((sp%self._board_size)+1)
+            self._cycle[index] = sp
+            index += 1
+
+    def move(self, board, head):
+        ''' get the action using agent policy '''
+        cy_len = (self._board_size-2)**2
+        curr_head = np.sum(self._board_grid * \
+            (board[:,:,0]==head).reshape(self._board_size, self._board_size))
+        index = 0
+        while(1):
+            if(self._cycle[index] == curr_head):
+                break
+            index = (index+1)%cy_len
+        prev_head = self._cycle[(index-1)%cy_len]
+        next_head = self._cycle[(index+1)%cy_len]
+        # get the next move
+        if(board[prev_head//self._board_size, prev_head%self._board_size, 0] == 0):
+            # check if snake is in line with the hamiltonian cycle or not
+            if(next_head > curr_head):
+                return 2
+            else:
+                return 0
+        else:
+            # calculate vectors representing current and new directions
+            # to get the direction in which to turn
+            d1 = (curr_head//self._board_size - prev_head//self._board_size, 
+                  curr_head%self._board_size - prev_head%self._board_size)
+            d2 = (next_head//self._board_size - curr_head//self._board_size, 
+                  next_head%self._board_size - curr_head%self._board_size)
+            # take cross product
+            turn_dir = d1[0]*d2[1] - d1[1]*d2[0]
+            if(turn_dir == 0):
+                return 1
+            elif(turn_dir == -1):
+                return 0
+            else:
+                return 2
+        '''
+        elif(curr_head//self._board_size == next_head//self._board_size):
+            # moving horizontally
+            if(next_head//self._board_size == 1):
+                return 0
+            elif(next_head//self._board_size == 2):
+                return 2
+            else:
+                return 0
+        else:
+            if()
+            # moving vertically
+            return 1
+        '''
+
+    def _get_model_outputs(self, board=None, model=None):
+        ''' for compatibility ''' 
+        return [[0] * self._n_actions]
+
+    def load_model(self, **kwargs):
+        ''' for compatibility '''
+        pass
