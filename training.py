@@ -15,9 +15,9 @@ from game_environment import Snake
 from agent import DeepQLearningAgent, PolicyGradientAgent, AdvantageActorCriticAgent
 
 # some global variables
-board_size = 8
-frames = 1
-version = 'v10.3'
+board_size = 10
+frames = 2
+version = 'v15'
 max_time_limit = 298 # 998
 
 
@@ -47,8 +47,12 @@ if(agent_type in ['DeepQLearningAgent']):
     epsilon, epsilon_end = 1, 0.01
     reward_type = 'current'
     sample_actions = False
-    n_games_training = 10
+    n_games_training = 5
     decay = 0.99
+    if(False):
+        # load the existing model from a supervised method
+        # or some other pretrained model
+        agent.load_model(file_path='models/{:s}'.format(version))
 if(agent_type in ['PolicyGradientAgent']):
     epsilon, epsilon_end = -1, -1
     reward_type = 'discounted_future'
@@ -64,8 +68,8 @@ if(agent_type in ['AdvantageActorCriticAgent']):
     n_games_training = 10
     decay = 1
 
-# define no of episodes, loggin frequency
-episodes = 1 * (10**6)
+# define no of episodes, logging frequency
+episodes = 1 * (10**5)
 log_frequency = 500
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
@@ -82,7 +86,7 @@ for index in tqdm(range(episodes)):
     current_rewards = play_game(env, agent, n_actions, epsilon=epsilon,
                         n_games=n_games_training, record=True,
                     sample_actions=sample_actions, reward_type=reward_type)
-    loss = agent.train_agent(batch_size=64, num_games=len(current_rewards))
+    loss = agent.train_agent(batch_size=32, num_games=len(current_rewards))
 
     if(agent_type in ['PolicyGradientAgent', 'AdvantageActorCriticAgent']):
         # for policy gradient algorithm, we only take current episodes for training
