@@ -16,7 +16,7 @@ from agent import DeepQLearningAgent, PolicyGradientAgent, AdvantageActorCriticA
 
 # some global variables
 board_size = 10
-frames = 2
+frames = 2 # keep frames >= 2
 version = 'v15'
 max_time_limit = 298 # 998
 

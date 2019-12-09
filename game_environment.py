@@ -104,6 +104,9 @@ class Snake:
         ''' get color of head '''
         return self._value['head']
 
+    def get_values(self):
+        return self._value
+
     def reset(self):
         '''
         reset the environment
