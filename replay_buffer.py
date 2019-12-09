@@ -35,7 +35,7 @@ class ReplayBuffer:
         size = min(size, buffer_size)
         sample_data_idx = set(np.random.choice(range(buffer_size), \
                                     size=size, replace=replace))
-        # sample size will be smaller than buffer size, hence traverse queue once
+        # sample size will be <= buffer size, hence traverse queue once
         sample_data = [val for index, val in enumerate(self._buffer) if index in sample_data_idx]
         if(shuffle):
             np.random.shuffle(sample_data)

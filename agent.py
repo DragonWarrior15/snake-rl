@@ -4,6 +4,7 @@ store all the agents here
 from replay_buffer import ReplayBuffer
 import numpy as np
 import time
+import pickle
 import tensorflow as tf
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.optimizers import RMSprop, SGD, Adam
@@ -22,7 +23,65 @@ def huber_loss(y_true, y_pred, delta=1):
         # linear error
         return tf.reduce_mean(delta*(tf.math.abs(error) - 0.5*delta), axis=-1)
 
-class DeepQLearningAgent():
+class Agent():
+    '''
+    base class for all agents
+    '''
+    def __init__(self, board_size=10, frames=4, buffer_size=10000,
+                 gamma=0.99, n_actions=3, use_target_net=True):
+        self._board_size = board_size
+        self._n_frames = frames
+        self._buffer_size = buffer_size
+        self._n_actions = n_actions
+        self._gamma = gamma
+        self._use_target_net = use_target_net
+        self._input_shape = (self._board_size, self._board_size, self._n_frames)
+        self.reset_buffer()   
+
+    def get_gamma(self):
+        return self._gamma
+
+    def reset_buffer(self, buffer_size=None):
+        ''' reset current buffer '''
+        if(buffer_size is not None):
+            self._buffer_size = buffer_size
+        self._buffer = ReplayBuffer(self._buffer_size)
+
+    def get_buffer_size(self):
+        ''' get the current buffer size '''
+        return self._buffer.get_current_size()
+
+    def add_to_buffer(self, board, action, reward, next_board, done):
+        '''
+        add current game step to the replay buffer
+        also maps action back to one hot encoded version
+        '''
+        one_hot_action = np.zeros((1, self._n_actions))
+        one_hot_action[0, action] = 1
+        self._buffer.add_to_buffer([board, one_hot_action, reward, next_board, done])
+
+    def save_buffer(self, file_path='', iteration=None):
+        ''' save the buffer to disk '''
+        if(iteration is not None):
+            assert isinstance(iteration, int), "iteration should be an integer"
+        else:
+            iteration = 0
+        with open("{}/buffer_{:04d}".format(file_path, iteration), 'wb') as f:
+            pickle.dump(self._buffer, f)
+
+    def load_buffer(self, file_path='', iteration=None):
+        ''' save the buffer to disk '''
+        if(iteration is not None):
+            assert isinstance(iteration, int), "iteration should be an integer"
+        else:
+            iteration = 0
+        try:
+            with open("{}/buffer_{:04d}".format(file_path, iteration), 'rb') as f:
+                self._buffer = pickle.load(f)
+        except FileNotFoundError:
+            print("Couldn't locate models at {}, check provided path".format(file_path))
+
+class DeepQLearningAgent(Agent):
     '''
     this agent learns the game via q learning
     model outputs everywhere refers to q values
@@ -37,25 +96,10 @@ class DeepQLearningAgent():
         input_shape (tuple): shape of input tensor
     '''
     def __init__(self, board_size=10, frames=4, buffer_size=10000,
-                 gamma = 0.99, n_actions=3, use_target_net=True):
-        self._board_size = board_size
-        self._n_frames = frames
-        self._buffer_size = buffer_size
-        self._n_actions = n_actions
-        self._gamma = gamma
-        self._use_target_net = use_target_net
-        self._input_shape = (self._board_size, self._board_size, self._n_frames)
-        self.reset_buffer()
+                 gamma=0.99, n_actions=3, use_target_net=True):
+        Agent.__init__(self, board_size=board_size, frames=frames, buffer_size=buffer_size,
+                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net)
         self.reset_models()
-
-    def get_gamma(self):
-        return self._gamma
-
-    def reset_buffer(self, buffer_size=None):
-        ''' reset current buffer '''
-        if(buffer_size is not None):
-            self._buffer_size = buffer_size
-        self._buffer = ReplayBuffer(self._buffer_size)
 
     def reset_models(self):
         ''' reset all the current models '''
@@ -64,7 +108,7 @@ class DeepQLearningAgent():
             self._target_net = self._agent_model()
             self.update_target_net()
 
-    def _prepare_intput(self, board):
+    def _prepare_input(self, board):
         ''' reshape input and normalize '''
         if(board.ndim == 3):
             board = board.reshape((1,) + self._input_shape)
@@ -73,7 +117,7 @@ class DeepQLearningAgent():
 
     def _get_model_outputs(self, board, model=None):
         ''' get action value '''
-        board = self._prepare_intput(board)
+        board = self._prepare_input(board)
         if model is None:
             model = self._model
         model_outputs = model.predict_on_batch(board)
@@ -105,7 +149,7 @@ class DeepQLearningAgent():
 
         return model
 
-    def get_action_proba(self, board):
+    def get_action_proba(self, board, head=2):
         ''' returns the action probability values '''
         model_outputs = self._get_model_outputs(board, self._model)[0]
         # subtracting max and taking softmax does not change output
@@ -126,7 +170,7 @@ class DeepQLearningAgent():
         if(self._use_target_net):
             self._target_net.save("{}/model_{:04d}_target.h5".format(file_path, iteration))
 
-    def load_model(self, file_path = '', iteration = None):
+    def load_model(self, file_path='', iteration=None):
         ''' load any existing models, if available '''
         if(iteration is not None):
             assert isinstance(iteration, int), "iteration should be an integer"
@@ -146,15 +190,6 @@ class DeepQLearningAgent():
         if(self._use_target_net):
             print('Target Network')
             print(self._target_net.summary())
-
-    def add_to_buffer(self, board, action, reward, next_board, done):
-        '''
-        add current game step to the replay buffer
-        also maps action back to one hot encoded version
-        '''
-        one_hot_action = np.zeros((1, self._n_actions))
-        one_hot_action[0, action] = 1
-        self._buffer.add_to_buffer([board, one_hot_action, reward, next_board, done])
 
     def train_agent(self, batch_size=32, num_games=1):
         '''
@@ -186,7 +221,7 @@ class DeepQLearningAgent():
     def copy_weights_from_agent(self, agent_for_copy):
         ''' to update weights between competing agents
         useful in parallel training '''
-        assert isinstance(agent_for_copy, Agent), "Agent type is required for copy"
+        assert isinstance(agent_for_copy, self), "Agent type is required for copy"
 
         self._model.set_weights(agent_for_copy._model.get_weights())
         self._target_net.set_weights(agent_for_copy._model_pred.get_weights())
@@ -259,7 +294,7 @@ class PolicyGradientAgent(DeepQLearningAgent):
         if(normalize_rewards):
             r = (r - np.mean(r))/(np.std(r) + 1e-8)
         target = np.multiply(a, r)
-        loss = self._update_function([self._prepare_intput(s), target, beta, num_games])
+        loss = self._update_function([self._prepare_input(s), target, beta, num_games])
         # loss = [round(x, 5) for x in loss]
         return loss[0] if len(loss)==1 else loss
 
@@ -320,17 +355,17 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
         model = self._action_values_model
         # calculate target for actor (uses advantage)
         actor_target = a * (r + self._gamma * self._get_model_outputs(next_s, model=model) * (1 - done) - self._get_model_outputs(s, model=model))
-        actor_loss = self._actor_update([self._prepare_intput(s), actor_target, beta, num_games])
+        actor_loss = self._actor_update([self._prepare_input(s), actor_target, beta, num_games])
 
         # calculate target for critic
         critic_target = (r + self._gamma * self._get_model_outputs(next_s, model=model)) * (1 - done)
         critic_target = a * critic_target + (1 - a) * self._get_model_outputs(s, model=model)
-        critic_loss = self._action_values_model.train_on_batch(self._prepare_intput(s), critic_target)
+        critic_loss = self._action_values_model.train_on_batch(self._prepare_input(s), critic_target)
 
         loss = actor_loss + [critic_loss]
         return loss[0] if len(loss)==1 else loss
 
-class HamiltonianCycleAgent():
+class HamiltonianCycleAgent(Agent):
     '''
     this agent prepares a hamiltonian cycle through the board and then
     follows it to reach the food
@@ -340,11 +375,11 @@ class HamiltonianCycleAgent():
         frames (int): no of frames available in one board state
         n_actions (int): no of actions available in the action space
     '''
-    def __init__(self, board_size=10, frames=1, n_actions=3, **kwargs):
+    def __init__(self, board_size=10, frames=4, buffer_size=10000,
+                 gamma = 0.99, n_actions=3, use_target_net=True):
         assert board_size%2 == 0, "Board size should be odd for hamiltonian cycle"
-        self._board_size = board_size
-        self._n_frames = frames
-        self._n_actions = n_actions
+        Agent.__init__(self, board_size=board_size, frames=frames, buffer_size=buffer_size,
+                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net)
         # self._get_cycle()
         self._get_cycle_square()
         self._board_grid = np.arange(0, self._board_size**2)\
@@ -456,9 +491,9 @@ class HamiltonianCycleAgent():
         if(board[prev_head//self._board_size, prev_head%self._board_size, 0] == 0):
             # check if snake is in line with the hamiltonian cycle or not
             if(next_head > curr_head):
-                return 2
-            else:
                 return 0
+            else:
+                return 2
         else:
             # calculate vectors representing current and new directions
             # to get the direction in which to turn
@@ -489,6 +524,13 @@ class HamiltonianCycleAgent():
             return 1
         '''
 
+    def get_action_proba(self, board, head):
+        ''' for compatibility '''
+        move = self.move(board, head)
+        prob = [0] * self._n_actions
+        prob[move] = 1
+        return prob
+
     def _get_model_outputs(self, board=None, model=None):
         ''' for compatibility ''' 
         return [[0] * self._n_actions]
@@ -496,3 +538,33 @@ class HamiltonianCycleAgent():
     def load_model(self, **kwargs):
         ''' for compatibility '''
         pass
+
+class SupervisedLearningAgent(DeepQLearningAgent):
+    '''
+    supervised learning agent that can use existing data
+    to train the neural networks, which might be used
+    as head start for reinforcement learning training;
+    since this agent learns using the HamiltonianCycleAgent
+    we do not have predicted q values and will use discounted
+    future rewards as the targets for training
+    '''
+    def train_agent(self, batch_size=32, num_games=1, epochs=5):
+        '''
+        train the model by sampling from buffer and return the error
+        Returns:
+            error (float) : the current mse
+        '''
+        self._model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
+        s, a, r, next_s, done = self._buffer.sample(self.get_buffer_size())
+        # in this case, the best action has some value based on rewards
+        # we will not worry about the other values
+        current_model = self._target_net if self._use_target_net else self._model
+        next_model_outputs = self._get_model_outputs(next_s, current_model)
+        discounted_reward = r + (self._gamma * np.max(next_model_outputs, axis = 1).reshape(-1, 1)) * (1-done)
+        target = self._get_model_outputs(s)
+        target = (1-a)*target + a*discounted_reward
+        # target = (1-a)*target + a*r # take discounted future rewards
+        # fit
+        history = self._model.fit(self._normalize_board(s), target, epochs=epochs)
+        loss = round(history.history['loss'][-1], 5)
+        return loss
