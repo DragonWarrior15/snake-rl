@@ -5,29 +5,28 @@ from replay_buffer import ReplayBuffer
 import numpy as np
 import time
 import pickle
+from collections import deque
 import tensorflow as tf
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.optimizers import RMSprop, SGD, Adam
 import tensorflow.keras.backend as K
-from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense
+from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense, Softmax
 from tensorflow.keras import Model
 from tensorflow.keras.regularizers import l2
+# from tensorflow.keras.losses import Huber
 
 def huber_loss(y_true, y_pred, delta=1):
     ''' keras implementation for huber loss '''
     error = (y_true - y_pred)
-    if(tf.math.abs(error) < delta):
-        # quadratic error
-        return tf.reduce_mean(tf.math.square(error), axis=-1)
-    else:
-        # linear error
-        return tf.reduce_mean(delta*(tf.math.abs(error) - 0.5*delta), axis=-1)
+    flag = tf.cast(tf.math.abs(error) < delta, tf.float32)
+    # quadratic error, linear error
+    return tf.reduce_mean(flag*tf.math.square(error) + (1-flag)*(delta*(tf.math.abs(error) - 0.5*delta)), axis=-1)
 
 class Agent():
     '''
     base class for all agents
     '''
-    def __init__(self, board_size=10, frames=4, buffer_size=10000,
+    def __init__(self, board_size=10, frames=2, buffer_size=10000,
                  gamma=0.99, n_actions=3, use_target_net=True):
         self._board_size = board_size
         self._n_frames = frames
@@ -36,7 +35,9 @@ class Agent():
         self._gamma = gamma
         self._use_target_net = use_target_net
         self._input_shape = (self._board_size, self._board_size, self._n_frames)
-        self.reset_buffer()   
+        self.reset_buffer()
+        self._board_grid = np.arange(0, self._board_size**2)\
+                             .reshape(self._board_size, -1)
 
     def get_gamma(self):
         return self._gamma
@@ -80,6 +81,12 @@ class Agent():
                 self._buffer = pickle.load(f)
         except FileNotFoundError:
             print("Couldn't locate models at {}, check provided path".format(file_path))
+
+    def _point_to_row_col(self, point):
+        return (point//self._board_size, point%self._board_size)
+
+    def row_col_to_point(self, row, col):
+        return row*self._board_size + col
 
 class DeepQLearningAgent(Agent):
     '''
@@ -125,10 +132,11 @@ class DeepQLearningAgent(Agent):
 
     def _normalize_board(self, board):
         ''' normalize the board before input to the network '''
-        return board.copy()
+        # return board.copy()
         # return((board/128.0 - 1).copy())
+        return board/4.0
 
-    def move(self, board, head=0):
+    def move(self, board, value=None):
         ''' get the action using agent policy '''
         model_outputs = self._get_model_outputs(board, self._model)
         return int(np.argmax(model_outputs))
@@ -137,19 +145,21 @@ class DeepQLearningAgent(Agent):
         '''
         returns the model which evaluates q values for a given state input
         '''
-        input_board = Input((self._board_size, self._board_size, self._n_frames,))
-        x = Conv2D(16, (4,4), activation = 'relu', data_format='channels_last')(input_board)
-        x = Conv2D(32, (4,4), activation = 'relu', data_format='channels_last')(x)
+        input_board = Input((self._board_size, self._board_size, self._n_frames,), name='input')
+        # x = Conv2D(4, (self._board_size,self._board_size), activation='relu', data_format='channels_last')(input_board)
+        x = Conv2D(16, (4,4), activation='relu', data_format='channels_last')(input_board)
+        x = Conv2D(32, (4,4), activation='relu', data_format='channels_last')(x)
         x = Flatten()(x)
         x = Dense(64, activation = 'relu')(x)
-        out = Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
+        out = Dense(self._n_actions, activation='linear', name='action_values')(x)
 
-        model = Model(inputs = input_board, outputs = out)
-        model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
+        model = Model(inputs=input_board, outputs=out)
+        model.compile(optimizer=Adam(0.005), loss=huber_loss)
+        # model.compile(optimizer=RMSprop(0.0005), loss='mean_squared_error')
 
         return model
 
-    def get_action_proba(self, board, head=2):
+    def get_action_proba(self, board, values=None):
         ''' returns the action probability values '''
         model_outputs = self._get_model_outputs(board, self._model)[0]
         # subtracting max and taking softmax does not change output
@@ -197,7 +207,7 @@ class DeepQLearningAgent(Agent):
         Returns:
             error (float) : the current mse
         '''
-        s, a, r, next_s, done = self._buffer.sample(batch_size)
+        s, a, r, next_s, done = self._buffer.sample(batch_size, shuffle=True)
         # calculate the discounted reward, and then train accordingly
         current_model = self._target_net if self._use_target_net else self._model
         next_model_outputs = self._get_model_outputs(next_s, current_model)
@@ -382,8 +392,6 @@ class HamiltonianCycleAgent(Agent):
                  gamma=gamma, n_actions=n_actions, use_target_net=use_target_net)
         # self._get_cycle()
         self._get_cycle_square()
-        self._board_grid = np.arange(0, self._board_size**2)\
-                             .reshape(self._board_size, -1)
     
     def _get_neighbors(self, point):
         '''
@@ -475,11 +483,11 @@ class HamiltonianCycleAgent(Agent):
             self._cycle[index] = sp
             index += 1
 
-    def move(self, board, head):
+    def move(self, board, values):
         ''' get the action using agent policy '''
         cy_len = (self._board_size-2)**2
         curr_head = np.sum(self._board_grid * \
-            (board[:,:,0]==head).reshape(self._board_size, self._board_size))
+            (board[:,:,0]==values['head']).reshape(self._board_size, self._board_size))
         index = 0
         while(1):
             if(self._cycle[index] == curr_head):
@@ -497,10 +505,11 @@ class HamiltonianCycleAgent(Agent):
         else:
             # calculate vectors representing current and new directions
             # to get the direction in which to turn
-            d1 = (curr_head//self._board_size - prev_head//self._board_size, 
-                  curr_head%self._board_size - prev_head%self._board_size)
-            d2 = (next_head//self._board_size - curr_head//self._board_size, 
-                  next_head%self._board_size - curr_head%self._board_size)
+            curr_head_row, curr_head_col = self._point_to_row_col(curr_head)
+            prev_head_row, prev_head_col = self._point_to_row_col(prev_head)
+            next_head_row, next_head_col = self._point_to_row_col(next_head)
+            d1 = (curr_head_row - prev_head_row, curr_head_col - prev_head_col)
+            d2 = (next_head_row - curr_head_row, next_head_col - curr_head_col)
             # take cross product
             turn_dir = d1[0]*d2[1] - d1[1]*d2[0]
             if(turn_dir == 0):
@@ -524,9 +533,9 @@ class HamiltonianCycleAgent(Agent):
             return 1
         '''
 
-    def get_action_proba(self, board, head):
+    def get_action_proba(self, board, values):
         ''' for compatibility '''
-        move = self.move(board, head)
+        move = self.move(board, values)
         prob = [0] * self._n_actions
         prob[move] = 1
         return prob
@@ -548,23 +557,156 @@ class SupervisedLearningAgent(DeepQLearningAgent):
     we do not have predicted q values and will use discounted
     future rewards as the targets for training
     '''
+    def __init__(self, board_size=10, frames=2, buffer_size=10000,
+                 gamma=0.99, n_actions=3, use_target_net=True):
+        DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames, buffer_size=buffer_size,
+                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net)
+        # define model with softmax activation, and use action as target
+        # instead of the reward value
+        self._model_action_out = Softmax()(self._model.get_layer('action_values').output)
+        self._model_action = Model(inputs=self._model.get_layer('input').input, outputs=self._model_action_out)
+        self._model_action.compile(optimizer=RMSprop(0.0005), loss='categorical_crossentropy')
+        
     def train_agent(self, batch_size=32, num_games=1, epochs=5):
         '''
         train the model by sampling from buffer and return the error
         Returns:
             error (float) : the current mse
         '''
-        self._model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
         s, a, r, next_s, done = self._buffer.sample(self.get_buffer_size())
         # in this case, the best action has some value based on rewards
         # we will not worry about the other values
-        current_model = self._target_net if self._use_target_net else self._model
-        next_model_outputs = self._get_model_outputs(next_s, current_model)
-        discounted_reward = r + (self._gamma * np.max(next_model_outputs, axis = 1).reshape(-1, 1)) * (1-done)
-        target = self._get_model_outputs(s)
-        target = (1-a)*target + a*discounted_reward
+        # current_model = self._target_net if self._use_target_net else self._model
+        # next_model_outputs = self._get_model_outputs(next_s, current_model)
+        # discounted_reward = r + (self._gamma * np.max(next_model_outputs, axis = 1).reshape(-1, 1)) * (1-done)
+        # target = self._get_model_outputs(s)
+        # target = (1-a)*target + a*discounted_reward
         # target = (1-a)*target + a*r # take discounted future rewards
         # fit
-        history = self._model.fit(self._normalize_board(s), target, epochs=epochs)
+        history = self._model_action.fit(self._normalize_board(s), a, epochs=epochs)
         loss = round(history.history['loss'][-1], 5)
         return loss
+
+class BreadthFirstSearchAgent(Agent):
+    '''
+    finds the shortest path from head to food
+    while avoiding the borders and body
+    '''
+    def _get_neighbors(self, point, values, board):
+        '''
+        point is a single integer such that 
+        row = point//self._board_size
+        col = point%self._board_size
+        '''
+        row, col = self._point_to_row_col(point)
+        neighbors = []
+        for delta_row, delta_col in [[-1,0], [1,0], [0,1], [0,-1]]:
+            new_row, new_col = row + delta_row, col + delta_col
+            if(board[new_row][new_col] in \
+               [values['board'], values['food'], values['head']]):
+                neighbors.append(new_row*self._board_size + new_col)
+        return neighbors
+
+    def _get_shortest_path(self, board, values):
+        # get the head coordinate
+        board = board[:,:,0]
+        head = ((self._board_grid * (board == values['head'])).sum())
+        points_to_search = deque()
+        points_to_search.append(head)
+        path = []
+        row, col = self._point_to_row_col(head)
+        distances = np.ones((self._board_size, self._board_size)) * np.inf
+        distances[row][col] = 0
+        visited = np.zeros((self._board_size, self._board_size))
+        visited[row][col] = 1
+        found = False
+        while(not found):
+            if(len(points_to_search) == 0):
+                # complete board has been explored without finding path
+                # take any arbitrary action
+                path = []
+                break
+            else:
+                curr_point = points_to_search.popleft()
+                curr_row, curr_col = self._point_to_row_col(curr_point)
+                n = self._get_neighbors(curr_point, values, board)
+                if(len(n) == 0):
+                    # no neighbors available, explore other paths
+                    continue
+                # iterate over neighbors and calculate distances
+                for p in n:
+                    row, col = self._point_to_row_col(p)
+                    if(distances[row][col] > 1 + distances[curr_row][curr_col]):
+                        # update shortest distance
+                        distances[row][col] = 1 + distances[curr_row][curr_col]
+                    if(board[row][col] == values['food']):
+                        # reached food, break
+                        found = True
+                        break
+                    if(visited[row][col] == 0):
+                        visited[curr_row][curr_col] = 1
+                        points_to_search.append(p)
+        # create the path going backwards from the food
+        curr_point = ((self._board_grid * (board == values['food'])).sum())
+        path.append(curr_point)
+        while(1):
+            curr_row, curr_col = self._point_to_row_col(curr_point)
+            if(distances[curr_row][curr_col] == np.inf):
+                # path is not possible
+                return []
+            if(distances[curr_row][curr_col] == 0):
+                # path is complete
+                break
+            n = self._get_neighbors(curr_point, values, board)
+            for p in n:
+                row, col = self._point_to_row_col(p)
+                if(distances[row][col] != np.inf and \
+                   distances[row][col] == distances[curr_row][curr_col] - 1):
+                    path.append(p)
+                    curr_point = p
+                    break
+        return path
+
+    def move(self, board, values):
+        path = self._get_shortest_path(board, values)
+        if(len(path) == 0):
+            return 1
+        next_head = path[-2]
+        curr_head = (self._board_grid * (board[:,:,0] == values['head'])).sum()
+        # get prev head position
+        if(((board[:,:,0] == values['head']) + (board[:,:,0] == values['snake']) \
+            == (board[:,:,1] == values['head']) + (board[:,:,1] == values['snake'])).all()):
+            # we are at the first frame, snake position is unchanged
+            prev_head = curr_head - 1
+        else:
+            # we are moving
+            prev_head = (self._board_grid * (board[:,:,1] == values['head'])).sum()
+        curr_head_row, curr_head_col = self._point_to_row_col(curr_head)
+        prev_head_row, prev_head_col = self._point_to_row_col(prev_head)
+        next_head_row, next_head_col = self._point_to_row_col(next_head)
+        d1 = (curr_head_row - prev_head_row, curr_head_col - prev_head_col)
+        d2 = (next_head_row - curr_head_row, next_head_col - curr_head_col)
+        # take cross product
+        turn_dir = d1[0]*d2[1] - d1[1]*d2[0]
+        if(turn_dir == 0):
+            return 1
+        elif(turn_dir == -1):
+            return 0
+        else:
+            return 2
+
+    def get_action_proba(self, board, values):
+        ''' for compatibility '''
+        move = self.move(board, values)
+        prob = [0] * self._n_actions
+        prob[move] = 1
+        return prob
+
+    def _get_model_outputs(self, board=None, model=None):
+        ''' for compatibility ''' 
+        return [[0] * self._n_actions]
+
+    def load_model(self, **kwargs):
+        ''' for compatibility '''
+        pass
+

@@ -12,14 +12,14 @@ import pandas as pd
 import time
 from utils import play_game
 from game_environment import Snake
-from agent import HamiltonianCycleAgent, SupervisedLearningAgent
+from agent import HamiltonianCycleAgent, BreadthFirstSearchAgent, SupervisedLearningAgent
 
 # some global variables
 board_size = 10
 frames = 2
 version = 'v15'
-max_time_limit = 48 # 998
-generate_training_data = False
+max_time_limit = 18 # 998
+generate_training_data = True
 do_training = True
 
 
@@ -37,12 +37,13 @@ if(generate_training_data):
     while its training
     '''
     # generate training data
-    agent = HamiltonianCycleAgent(board_size=board_size, frames=frames, buffer_size=10000)
-    for index in tqdm(range(10)):
+    # agent = HamiltonianCycleAgent(board_size=board_size, frames=frames, buffer_size=10000)
+    agent = BreadthFirstSearchAgent(board_size=board_size, frames=frames, buffer_size=10000)
+    for index in tqdm(range(1)):
         # make small changes to the buffer and slowly train
         current_rewards = play_game(env, agent, n_actions, epsilon=-1,
-                            n_games=100, record=True, sample_actions=False,
-                            reward_type='current')
+                            n_games=500, record=True, sample_actions=False,
+                            reward_type='discounted_future')
 
         file_path = 'models/{:s}'.format(version)
         if(not os.path.exists(file_path)):
@@ -54,16 +55,16 @@ if(do_training):
     # setup the agent
     agent = SupervisedLearningAgent(board_size=board_size, frames=frames, buffer_size=1)
     # agent.print_models()
-    for _ in range(4):
-        for index in tqdm(range(10)):
-            # read the saved training data
-            file_path = 'models/{:s}'.format(version)
-            agent.load_buffer(file_path=file_path, iteration=(index+1))
-            print(agent.get_buffer_size())
-            # make small changes to the buffer and slowly train
-            loss = agent.train_agent()
-            print('Loss at buffer {:d} is : {:.5f}'.format(index+1, loss))
-            agent.update_target_net()
+    total_files = 1
+    for index in tqdm(range(1 * total_files)):
+        # read the saved training data
+        file_path = 'models/{:s}'.format(version)
+        agent.load_buffer(file_path=file_path, iteration=((index%total_files)+1))
+        print(agent.get_buffer_size())
+        # make small changes to the buffer and slowly train
+        loss = agent.train_agent(epochs=40)
+        print('Loss at buffer {:d} is : {:.5f}'.format((index%total_files)+1, loss))
+        agent.update_target_net()
     # save the trained model
     agent.save_model(file_path='models/{:s}'.format(version))
 

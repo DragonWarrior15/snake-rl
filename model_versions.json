@@ -99,7 +99,6 @@
             "training_range" :50000,
             "max_time_limit" :198,
         },
-        },
         "v10.2":{
             "agent_type"     :"DeepQLearningAgent",
             "reward"         :"-1/1 reward, -0.1 time",
@@ -170,6 +169,31 @@
             "reward_changing":"(length-initial_length)*(food_reward)",
             "board_size"     :10,
             "frames"         :1,
+            "max_time_limit" :-1
+        },
+            "v15":{
+            "agent_type"     :"BreadthFirstSearchAgent+SupervisedAgent+DeepQLearningAgent",
+            "reward"         :"-10/10 reward",
+            "conv_filters"   :"16, 32 filters of (4,4)",
+            "dense"          :64,
+            "batch_size"     :32,
+            "reward_changing":"(length-initial_length)*(food_reward)",
+            "board_size"     :10,
+            "frames"         :2,
+            "buffer_size"    :60000,
+            "optimizer"      :"RMSprop(0.0005)",
+            "training_range" :50000,
+            "max_time_limit" :"-1 for BreadthFirstSearchAgent, 998 for DeepQLearningAgent"
+        },
+            "v16":{
+            "agent_type"     :"BreadthFirstSearchAgent",
+            "reward"         :"-10/10 reward",
+            "conv_filters"   :"16, 32 filters of (4,4)",
+            "dense"          :64,
+            "batch_size"     :64,
+            "reward_changing":"(length-initial_length)*(food_reward)",
+            "board_size"     :10,
+            "frames"         :2,
             "max_time_limit" :-1
         }
     }

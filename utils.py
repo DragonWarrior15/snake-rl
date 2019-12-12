@@ -46,7 +46,7 @@ def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
                     probs = agent.get_action_proba(s)
                     action = np.random.choice(n_actions, p=probs)
                 else:
-                    action = agent.move(s, env.get_head_value())
+                    action = agent.move(s, env.get_values())
             next_s, reward, done, info = env.step(action)
             if(record and (info['termination_reason'] != 'time_up')):
                 if(reward_type == 'current'):
@@ -82,7 +82,8 @@ def visualize_game(env, agent, path='images/game_visual.png', debug=False,
     game_images.append([s[:,:,0], 0])
     done = 0
     while(not done):
-        a = agent.move(s, env.get_head_value())
+        # print('frame no ', len(game_images))
+        a = agent.move(s, env.get_values())
         next_s, r, done, info = env.step(a)
         qvalues.append(agent._get_model_outputs(s)[0])
         food_count.append(info['food'])

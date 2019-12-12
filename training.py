@@ -16,9 +16,9 @@ from agent import DeepQLearningAgent, PolicyGradientAgent, AdvantageActorCriticA
 
 # some global variables
 board_size = 10
-frames = 2
+frames = 2 # keep frames >= 2
 version = 'v15'
-max_time_limit = 298 # 998
+max_time_limit = 998 # 998
 
 
 # setup the environment
@@ -27,7 +27,7 @@ s = env.reset()
 n_actions = env.get_num_actions()
 
 # setup the agent
-agent = DeepQLearningAgent(board_size=board_size, frames=frames, buffer_size=60000)
+agent = DeepQLearningAgent(board_size=board_size, frames=frames, buffer_size=40000)
 # agent = PolicyGradientAgent(board_size=board_size, frames=frames, buffer_size=2000)
 # agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, buffer_size=2000)
 # agent.print_models()
@@ -69,7 +69,7 @@ if(agent_type in ['AdvantageActorCriticAgent']):
     decay = 1
 
 # define no of episodes, logging frequency
-episodes = 1 * (10**5)
+episodes = 5 * (10**4)
 log_frequency = 500
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
@@ -83,10 +83,10 @@ if(agent_type in ['DeepQLearningAgent']):
 model_logs = {'iteration':[], 'reward_mean':[], 'reward_dev':[], 'loss':[]}
 for index in tqdm(range(episodes)):
     # make small changes to the buffer and slowly train
-    current_rewards = play_game(env, agent, n_actions, epsilon=epsilon,
+    _ = play_game(env, agent, n_actions, epsilon=epsilon,
                         n_games=n_games_training, record=True,
                     sample_actions=sample_actions, reward_type=reward_type)
-    loss = agent.train_agent(batch_size=32, num_games=len(current_rewards))
+    loss = agent.train_agent(batch_size=64, num_games=n_games_training)
 
     if(agent_type in ['PolicyGradientAgent', 'AdvantageActorCriticAgent']):
         # for policy gradient algorithm, we only take current episodes for training
@@ -97,7 +97,7 @@ for index in tqdm(range(episodes)):
         model_logs['loss'].append(loss)
         # keep track of agent rewards_history
         current_rewards = play_game(env, agent, n_actions, n_games=10, epsilon=-1,
-                                    record=False)
+                                    record=False, sample_actions=False)
         model_logs['iteration'].append(index+1)
         model_logs['reward_mean'].append(round(np.mean(current_rewards), 2))
         model_logs['reward_dev'].append(round(np.std(current_rewards), 2))
