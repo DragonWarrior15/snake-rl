@@ -499,15 +499,29 @@ class HamiltonianCycleAgent(Agent):
         if(board[prev_head//self._board_size, prev_head%self._board_size, 0] == 0):
             # check if snake is in line with the hamiltonian cycle or not
             if(next_head > curr_head):
-                return 0
+                return 3
             else:
-                return 2
+                return 1
         else:
-            # calculate vectors representing current and new directions
-            # to get the direction in which to turn
+            # calcualte intended direction to get move
             curr_head_row, curr_head_col = self._point_to_row_col(curr_head)
             prev_head_row, prev_head_col = self._point_to_row_col(prev_head)
             next_head_row, next_head_col = self._point_to_row_col(next_head)
+            dx, dy = next_head_col - curr_head_col, -next_head_row + curr_head_row
+            if(dx == 1 and dy == 0):
+                return 0
+            elif(dx == 0 and dy == 1):
+                return 1
+            elif(dx == -1 and dy == 0):
+                return 2
+            elif(dx == 0 and dy == -1):
+                return 3
+            else:
+                return -1
+                
+            '''
+            # calculate vectors representing current and new directions
+            # to get the direction in which to turn
             d1 = (curr_head_row - prev_head_row, curr_head_col - prev_head_col)
             d2 = (next_head_row - curr_head_row, next_head_col - curr_head_col)
             # take cross product
@@ -518,20 +532,7 @@ class HamiltonianCycleAgent(Agent):
                 return 0
             else:
                 return 2
-        '''
-        elif(curr_head//self._board_size == next_head//self._board_size):
-            # moving horizontally
-            if(next_head//self._board_size == 1):
-                return 0
-            elif(next_head//self._board_size == 2):
-                return 2
-            else:
-                return 0
-        else:
-            if()
-            # moving vertically
-            return 1
-        '''
+            '''
 
     def get_action_proba(self, board, values):
         ''' for compatibility '''
@@ -684,6 +685,19 @@ class BreadthFirstSearchAgent(Agent):
         curr_head_row, curr_head_col = self._point_to_row_col(curr_head)
         prev_head_row, prev_head_col = self._point_to_row_col(prev_head)
         next_head_row, next_head_col = self._point_to_row_col(next_head)
+        dx, dy = next_head_col - curr_head_col, -next_head_row + curr_head_row
+        if(dx == 1 and dy == 0):
+            return 0
+        elif(dx == 0 and dy == 1):
+            return 1
+        elif(dx == -1 and dy == 0):
+            return 2
+        elif(dx == 0 and dy == -1):
+            return 3
+        else:
+            return -1
+            
+        '''
         d1 = (curr_head_row - prev_head_row, curr_head_col - prev_head_col)
         d2 = (next_head_row - curr_head_row, next_head_col - curr_head_col)
         # take cross product
@@ -694,6 +708,7 @@ class BreadthFirstSearchAgent(Agent):
             return 0
         else:
             return 2
+        '''
 
     def get_action_proba(self, board, values):
         ''' for compatibility '''

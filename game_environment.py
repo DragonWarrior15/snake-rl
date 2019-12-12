@@ -53,8 +53,9 @@ class Snake:
         '''
         # self._value = {'snake':255, 'board':0, 'food':128, 'head':180, 'border':80}
         self._value = {'snake':1, 'board':0, 'food':3, 'head':2, 'border':4}
-        self._actions = [-1, 0, 1] # -1 right, 0 nothing, 1 left
-        self._n_actions = 3
+        # self._actions = [-1, 0, 1] # -1 left, 0 nothing, 1 right
+        self._actions = {-1:-1, 0:0, 1:1, 2:2, 3:3, 4:-1}
+        self._n_actions = 5
         self._board_size = board_size
         self._n_frames = frames
         self._rewards = {'out':-1, 'food':1, 'time':0, 'no_food':0}
@@ -188,8 +189,13 @@ class Snake:
         Returns:
             direction (int) : the new direction of motion
         '''
-        direction = (current_direction + self._action_map(action))%4
-        return direction
+        # direction = (current_direction + self._action_map(action))%4
+        if(self._action_map(action) == -1):
+            return current_direction
+        elif(abs(self._action_map(action) - current_direction) == 2):
+            return current_direction
+        else:
+            return self._action_map(action)
 
     def _get_new_head(self, action, current_direction):
         '''
@@ -198,9 +204,17 @@ class Snake:
             new_head (Position) : position class for the new head
         '''
         new_dir  = self._get_new_direction(action, current_direction)
-        del_x, del_y = (new_dir%2)*(new_dir-2), (1-(new_dir%2))*(1-new_dir)
-        new_head = Position(self._snake_head.row + del_x,
-                            self._snake_head.col + del_y)
+        # del_x, del_y = (new_dir%2)*(new_dir-2), (1-(new_dir%2))*(1-new_dir)
+        if(new_dir == 0):
+            del_x, del_y = 1, 0
+        elif(new_dir == 1):
+            del_x, del_y = 0, 1
+        elif(new_dir == 2):
+            del_x, del_y = -1, 0
+        else:
+            del_x, del_y = 0, -1
+        new_head = Position(self._snake_head.row - del_y,
+                            self._snake_head.col + del_x)
         return new_head
 
     def step(self, action):
@@ -215,7 +229,8 @@ class Snake:
             done : whether the game is over or not (1 or 0)
             info : any auxillary game information
         '''
-        assert action in list(range(self._n_actions)), "Action must be in " + list(range(self._n_actions))
+        # assert action in list(range(self._n_actions)), "Action must be in " + list(range(self._n_actions))
+        assert action in self._actions, "Action must be in " + [k for k in self._actions]
         reward, done = 0, 0
 
         # check if the current action is feasible
