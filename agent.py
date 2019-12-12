@@ -10,25 +10,23 @@ import tensorflow as tf
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.optimizers import RMSprop, SGD, Adam
 import tensorflow.keras.backend as K
-from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense
+from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense, Softmax
 from tensorflow.keras import Model
 from tensorflow.keras.regularizers import l2
+# from tensorflow.keras.losses import Huber
 
 def huber_loss(y_true, y_pred, delta=1):
     ''' keras implementation for huber loss '''
     error = (y_true - y_pred)
-    if(tf.math.abs(error) < delta):
-        # quadratic error
-        return tf.reduce_mean(tf.math.square(error), axis=-1)
-    else:
-        # linear error
-        return tf.reduce_mean(delta*(tf.math.abs(error) - 0.5*delta), axis=-1)
+    flag = tf.cast(tf.math.abs(error) < delta, tf.float32)
+    # quadratic error, linear error
+    return tf.reduce_mean(flag*tf.math.square(error) + (1-flag)*(delta*(tf.math.abs(error) - 0.5*delta)), axis=-1)
 
 class Agent():
     '''
     base class for all agents
     '''
-    def __init__(self, board_size=10, frames=4, buffer_size=10000,
+    def __init__(self, board_size=10, frames=2, buffer_size=10000,
                  gamma=0.99, n_actions=3, use_target_net=True):
         self._board_size = board_size
         self._n_frames = frames
@@ -134,10 +132,11 @@ class DeepQLearningAgent(Agent):
 
     def _normalize_board(self, board):
         ''' normalize the board before input to the network '''
-        return board.copy()
+        # return board.copy()
         # return((board/128.0 - 1).copy())
+        return board/4.0
 
-    def move(self, board, head=0):
+    def move(self, board, value=None):
         ''' get the action using agent policy '''
         model_outputs = self._get_model_outputs(board, self._model)
         return int(np.argmax(model_outputs))
@@ -146,19 +145,21 @@ class DeepQLearningAgent(Agent):
         '''
         returns the model which evaluates q values for a given state input
         '''
-        input_board = Input((self._board_size, self._board_size, self._n_frames,))
-        x = Conv2D(16, (4,4), activation = 'relu', data_format='channels_last')(input_board)
-        x = Conv2D(32, (4,4), activation = 'relu', data_format='channels_last')(x)
+        input_board = Input((self._board_size, self._board_size, self._n_frames,), name='input')
+        # x = Conv2D(4, (self._board_size,self._board_size), activation='relu', data_format='channels_last')(input_board)
+        x = Conv2D(16, (4,4), activation='relu', data_format='channels_last')(input_board)
+        x = Conv2D(32, (4,4), activation='relu', data_format='channels_last')(x)
         x = Flatten()(x)
         x = Dense(64, activation = 'relu')(x)
-        out = Dense(self._n_actions, activation = 'linear', name = 'action_values')(x)
+        out = Dense(self._n_actions, activation='linear', name='action_values')(x)
 
-        model = Model(inputs = input_board, outputs = out)
-        model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
+        model = Model(inputs=input_board, outputs=out)
+        model.compile(optimizer=Adam(0.005), loss=huber_loss)
+        # model.compile(optimizer=RMSprop(0.0005), loss='mean_squared_error')
 
         return model
 
-    def get_action_proba(self, board, head=2):
+    def get_action_proba(self, board, values=None):
         ''' returns the action probability values '''
         model_outputs = self._get_model_outputs(board, self._model)[0]
         # subtracting max and taking softmax does not change output
@@ -206,7 +207,7 @@ class DeepQLearningAgent(Agent):
         Returns:
             error (float) : the current mse
         '''
-        s, a, r, next_s, done = self._buffer.sample(batch_size)
+        s, a, r, next_s, done = self._buffer.sample(batch_size, shuffle=True)
         # calculate the discounted reward, and then train accordingly
         current_model = self._target_net if self._use_target_net else self._model
         next_model_outputs = self._get_model_outputs(next_s, current_model)
@@ -556,24 +557,33 @@ class SupervisedLearningAgent(DeepQLearningAgent):
     we do not have predicted q values and will use discounted
     future rewards as the targets for training
     '''
+    def __init__(self, board_size=10, frames=2, buffer_size=10000,
+                 gamma=0.99, n_actions=3, use_target_net=True):
+        DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames, buffer_size=buffer_size,
+                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net)
+        # define model with softmax activation, and use action as target
+        # instead of the reward value
+        self._model_action_out = Softmax()(self._model.get_layer('action_values').output)
+        self._model_action = Model(inputs=self._model.get_layer('input').input, outputs=self._model_action_out)
+        self._model_action.compile(optimizer=RMSprop(0.0005), loss='categorical_crossentropy')
+        
     def train_agent(self, batch_size=32, num_games=1, epochs=5):
         '''
         train the model by sampling from buffer and return the error
         Returns:
             error (float) : the current mse
         '''
-        self._model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
         s, a, r, next_s, done = self._buffer.sample(self.get_buffer_size())
         # in this case, the best action has some value based on rewards
         # we will not worry about the other values
-        current_model = self._target_net if self._use_target_net else self._model
-        next_model_outputs = self._get_model_outputs(next_s, current_model)
-        discounted_reward = r + (self._gamma * np.max(next_model_outputs, axis = 1).reshape(-1, 1)) * (1-done)
-        target = self._get_model_outputs(s)
-        target = (1-a)*target + a*discounted_reward
+        # current_model = self._target_net if self._use_target_net else self._model
+        # next_model_outputs = self._get_model_outputs(next_s, current_model)
+        # discounted_reward = r + (self._gamma * np.max(next_model_outputs, axis = 1).reshape(-1, 1)) * (1-done)
+        # target = self._get_model_outputs(s)
+        # target = (1-a)*target + a*discounted_reward
         # target = (1-a)*target + a*r # take discounted future rewards
         # fit
-        history = self._model.fit(self._normalize_board(s), target, epochs=epochs)
+        history = self._model_action.fit(self._normalize_board(s), a, epochs=epochs)
         loss = round(history.history['loss'][-1], 5)
         return loss
 
@@ -685,9 +695,9 @@ class BreadthFirstSearchAgent(Agent):
         else:
             return 2
 
-    def get_action_proba(self, board, head):
+    def get_action_proba(self, board, values):
         ''' for compatibility '''
-        move = self.move(board, head)
+        move = self.move(board, values)
         prob = [0] * self._n_actions
         prob[move] = 1
         return prob

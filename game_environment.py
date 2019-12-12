@@ -47,7 +47,7 @@ class Snake:
         snake (queue) : a queue to store the positions of the snake body
     '''
     def __init__(self, board_size=11, frames=4, start_length=5, seed=42,
-                 max_time_limit=998):
+                 max_time_limit=298):
         '''
         Initialization function for the environment.
         '''
@@ -57,7 +57,7 @@ class Snake:
         self._n_actions = 3
         self._board_size = board_size
         self._n_frames = frames
-        self._rewards = {'out':-10, 'food':10, 'time':0, 'no_food':0}
+        self._rewards = {'out':-1, 'food':1, 'time':0, 'no_food':0}
         # start length is constrained to be less than half of board size
         self._start_length = min(start_length, (board_size-2)//2)
         # set numpy seed for reproducible results
@@ -240,13 +240,13 @@ class Snake:
 
     def _get_food_reward(self):
         ''' try different rewards schemes for when food is eaten '''
-        return((self._snake_length - self._start_length + 1) * self._rewards['food'])
-        # return self._rewards['food']
+        # return((self._snake_length - self._start_length + 1) * self._rewards['food'])
+        return self._rewards['food']
 
     def _get_death_reward(self):
         ''' try different rewards schemes for death '''
-        return((self._snake_length - self._start_length + 1) * self._rewards['out'])
-        # return self._rewards['out']
+        # return((self._snake_length - self._start_length + 1) * self._rewards['out'])
+        return self._rewards['out']
 
     def _check_if_done(self, action):
         '''
