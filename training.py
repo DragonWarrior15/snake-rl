@@ -12,9 +12,11 @@ import pandas as pd
 import time
 from utils import play_game
 from game_environment import Snake
+import tensorflow as tf
 from agent import DeepQLearningAgent, PolicyGradientAgent, AdvantageActorCriticAgent
 
 # some global variables
+tf.random.set_seed(42)
 board_size = 10
 frames = 2 # keep frames >= 2
 version = 'v15'
@@ -27,9 +29,9 @@ s = env.reset()
 n_actions = env.get_num_actions()
 
 # setup the agent
-agent = DeepQLearningAgent(board_size=board_size, frames=frames, buffer_size=40000)
-# agent = PolicyGradientAgent(board_size=board_size, frames=frames, buffer_size=2000)
-# agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, buffer_size=2000)
+agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=40000)
+# agent = PolicyGradientAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=2000)
+# agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=2000)
 # agent.print_models()
 
 # check in the same order as class hierarchy
@@ -69,7 +71,7 @@ if(agent_type in ['AdvantageActorCriticAgent']):
     decay = 1
 
 # define no of episodes, logging frequency
-episodes = 5 * (10**4)
+episodes = 2 * (10**4)
 log_frequency = 500
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
@@ -86,7 +88,7 @@ for index in tqdm(range(episodes)):
     _ = play_game(env, agent, n_actions, epsilon=epsilon,
                         n_games=n_games_training, record=True,
                     sample_actions=sample_actions, reward_type=reward_type)
-    loss = agent.train_agent(batch_size=64, num_games=n_games_training)
+    loss = agent.train_agent(batch_size=64, num_games=n_games_training, reward_clip=True)
 
     if(agent_type in ['PolicyGradientAgent', 'AdvantageActorCriticAgent']):
         # for policy gradient algorithm, we only take current episodes for training
