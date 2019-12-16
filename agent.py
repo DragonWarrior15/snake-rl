@@ -10,7 +10,7 @@ import tensorflow as tf
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.optimizers import RMSprop, SGD, Adam
 import tensorflow.keras.backend as K
-from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense, Softmax
+from tensorflow.keras.layers import Input, Conv2D, Flatten, Dense, Softmax, MaxPool2D
 from tensorflow.keras import Model
 from tensorflow.keras.regularizers import l2
 # from tensorflow.keras.losses import Huber
@@ -146,15 +146,15 @@ class DeepQLearningAgent(Agent):
         returns the model which evaluates q values for a given state input
         '''
         input_board = Input((self._board_size, self._board_size, self._n_frames,), name='input')
-        # x = Conv2D(4, (self._board_size,self._board_size), activation='relu', data_format='channels_last')(input_board)
-        x = Conv2D(16, (4,4), activation='relu', data_format='channels_last')(input_board)
-        x = Conv2D(32, (4,4), activation='relu', data_format='channels_last')(x)
+        # x = Conv2D(self._board_size, (self._board_size,self._board_size), activation='relu', data_format='channels_last')(input_board)
+        x = Conv2D(32, (3,3), activation='relu', data_format='channels_last')(input_board)
+        x = Conv2D(64, (3,3), activation='relu', data_format='channels_last')(x)
         x = Flatten()(x)
-        x = Dense(64, activation = 'relu')(x)
+        x = Dense(128, activation = 'relu')(x)
         out = Dense(self._n_actions, activation='linear', name='action_values')(x)
 
         model = Model(inputs=input_board, outputs=out)
-        model.compile(optimizer=Adam(0.005), loss=huber_loss)
+        model.compile(optimizer=RMSprop(0.005), loss=huber_loss)
         # model.compile(optimizer=RMSprop(0.0005), loss='mean_squared_error')
 
         return model
@@ -201,7 +201,7 @@ class DeepQLearningAgent(Agent):
             print('Target Network')
             print(self._target_net.summary())
 
-    def train_agent(self, batch_size=32, num_games=1):
+    def train_agent(self, batch_size=32, num_games=1, reward_clip=False):
         '''
         train the model by sampling from buffer and return the error
         Returns:
@@ -212,6 +212,8 @@ class DeepQLearningAgent(Agent):
         current_model = self._target_net if self._use_target_net else self._model
         next_model_outputs = self._get_model_outputs(next_s, current_model)
         discounted_reward = r + (self._gamma * np.max(next_model_outputs, axis = 1).reshape(-1, 1)) * (1-done)
+        if(reward_clip):
+            discounted_reward = np.sign(discounted_reward)
         # create the target variable, only the column with action has different value
         target = self._get_model_outputs(s)
         target = (1-a)*target + a*discounted_reward
@@ -227,6 +229,16 @@ class DeepQLearningAgent(Agent):
         '''
         if(self._use_target_net):
             self._target_net.set_weights(self._model.get_weights())
+
+    def compare_weights(self):
+        '''
+        check if the model and target net have the same weights of not
+        '''
+        for i in range(len(self._model.layers)):
+            for j in range(len(self._model.layers[i].weights)):
+                c = (self._model.layers[i].weights[j].numpy() == \
+                     self._target_net.layers[i].weights[j].numpy()).all()
+                print('Layer {:d} Weights {:d} Match : {:d}'.format(i, j, int(c)))
 
     def copy_weights_from_agent(self, agent_for_copy):
         ''' to update weights between competing agents
@@ -289,7 +301,7 @@ class PolicyGradientAgent(DeepQLearningAgent):
         return model
 
     def train_agent(self, batch_size=32, beta=0.1, normalize_rewards=False,
-                    num_games=1):
+                    num_games=1, reward_clip=False):
         '''
         train the model by sampling from buffer and return the error
         Returns:
@@ -342,7 +354,7 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
         return model_logits, model_values
 
     def train_agent(self, batch_size=32, beta=0.001, normalize_rewards=False,
-                    num_games=1):
+                    num_games=1, reward_clip=False):
         '''
         train the model by sampling from buffer and return the error
         Returns:
@@ -566,9 +578,10 @@ class SupervisedLearningAgent(DeepQLearningAgent):
         # instead of the reward value
         self._model_action_out = Softmax()(self._model.get_layer('action_values').output)
         self._model_action = Model(inputs=self._model.get_layer('input').input, outputs=self._model_action_out)
-        self._model_action.compile(optimizer=RMSprop(0.0005), loss='categorical_crossentropy')
+        self._model_action.compile(optimizer=RMSprop(0.005), loss='categorical_crossentropy')
+        self._max_output = -np.inf
         
-    def train_agent(self, batch_size=32, num_games=1, epochs=5):
+    def train_agent(self, batch_size=32, num_games=1, epochs=5, reward_clip=False):
         '''
         train the model by sampling from buffer and return the error
         Returns:
@@ -585,8 +598,22 @@ class SupervisedLearningAgent(DeepQLearningAgent):
         # target = (1-a)*target + a*r # take discounted future rewards
         # fit
         history = self._model_action.fit(self._normalize_board(s), a, epochs=epochs)
-        loss = round(history.history['loss'][-1], 5)
+        loss = round(history['loss'][-1], 5)
+        # loss = self._model_action.evaluate(self._normalize_board(s), a, verbose=0)
+        # keep track of max of output
+        self._max_output = max(np.max(self._model.predict(self._normalize_board(s))), self._max_output)
         return loss
+
+    def get_max_output():
+        return self._max_output
+
+    def normalize_output_layer(self, max_value):
+        if(max_value is None):
+            max_value = self._max_output
+        if(np.isnan(max_value) or np.isnan(self._max_output)):
+            max_value = 1
+        self._model.get_layer('action_values').set_weights(\
+           self._model.get_layer('action_values').get_weights()/max_value)
 
 class BreadthFirstSearchAgent(Agent):
     '''
