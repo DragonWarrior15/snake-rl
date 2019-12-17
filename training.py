@@ -3,7 +3,7 @@ script for training the agent for snake using various methods
 '''
 # run on cpu
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 import numpy as np
 from tqdm import tqdm
@@ -21,7 +21,7 @@ board_size = 10
 frames = 2 # keep frames >= 2
 version = 'v15'
 max_time_limit = 998 # 998
-
+supervised = False
 
 # setup the environment
 env = Snake(board_size=board_size, frames=frames, max_time_limit=max_time_limit)
@@ -51,10 +51,15 @@ if(agent_type in ['DeepQLearningAgent']):
     sample_actions = False
     n_games_training = 5
     decay = 0.99
-    if(False):
+    if(supervised):
+        # lower the epsilon since some starting policy has already been trained
+        epsilon = 0.6
         # load the existing model from a supervised method
         # or some other pretrained model
-        agent.load_model(file_path='models/{:s}'.format(version))
+        try:
+            agent.load_model(file_path='models/{:s}'.format(version))
+        except FileNotFoundError:
+            pass
 if(agent_type in ['PolicyGradientAgent']):
     epsilon, epsilon_end = -1, -1
     reward_type = 'discounted_future'
@@ -71,14 +76,21 @@ if(agent_type in ['AdvantageActorCriticAgent']):
     decay = 1
 
 # define no of episodes, logging frequency
-episodes = 2 * (10**4)
+episodes = 1 * (10**5)
 log_frequency = 500
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
 # use only for DeepQLearningAgent
 if(agent_type in ['DeepQLearningAgent']):
     # play some games initially to fill the buffer
-    _ = play_game(env, agent, n_actions, n_games=6000, record=True,
+    # or load from an existing buffer (supervised)
+    if(supervised):
+        try:
+            agent.load_buffer(file_path='models/{:s}'.format(version), iteration=1)
+        except FileNotFoundError:
+            pass
+    else:
+        _ = play_game(env, agent, n_actions, n_games=6000, record=True,
                     epsilon=epsilon, verbose=True, reset_seed=False)
 
 # training loop
@@ -88,7 +100,7 @@ for index in tqdm(range(episodes)):
     _ = play_game(env, agent, n_actions, epsilon=epsilon,
                         n_games=n_games_training, record=True,
                     sample_actions=sample_actions, reward_type=reward_type)
-    loss = agent.train_agent(batch_size=64, num_games=n_games_training, reward_clip=True)
+    loss = agent.train_agent(batch_size=32, num_games=n_games_training, reward_clip=False)
 
     if(agent_type in ['PolicyGradientAgent', 'AdvantageActorCriticAgent']):
         # for policy gradient algorithm, we only take current episodes for training

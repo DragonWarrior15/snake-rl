@@ -55,7 +55,7 @@ class Snake:
         self._value = {'snake':1, 'board':0, 'food':3, 'head':2, 'border':4}
         # self._actions = [-1, 0, 1] # -1 left, 0 nothing, 1 right
         self._actions = {-1:-1, 0:0, 1:1, 2:2, 3:3, 4:-1}
-        self._n_actions = 5
+        self._n_actions = 4
         self._board_size = board_size
         self._n_frames = frames
         self._rewards = {'out':-1, 'food':1, 'time':0, 'no_food':0}

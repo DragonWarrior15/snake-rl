@@ -20,7 +20,8 @@ def huber_loss(y_true, y_pred, delta=1):
     error = (y_true - y_pred)
     flag = tf.cast(tf.math.abs(error) < delta, tf.float32)
     # quadratic error, linear error
-    return tf.reduce_mean(flag*tf.math.square(error) + (1-flag)*(delta*(tf.math.abs(error) - 0.5*delta)), axis=-1)
+    return tf.reduce_mean(0.5*flag*tf.math.square(error) + \
+                (1-flag)*(delta*(tf.math.abs(error) - 0.5*delta)), axis=-1)
 
 class Agent():
     '''
@@ -147,14 +148,14 @@ class DeepQLearningAgent(Agent):
         '''
         input_board = Input((self._board_size, self._board_size, self._n_frames,), name='input')
         # x = Conv2D(self._board_size, (self._board_size,self._board_size), activation='relu', data_format='channels_last')(input_board)
-        x = Conv2D(32, (3,3), activation='relu', data_format='channels_last')(input_board)
-        x = Conv2D(64, (3,3), activation='relu', data_format='channels_last')(x)
+        x = Conv2D(16, (4,4), activation='relu', data_format='channels_last')(input_board)
+        x = Conv2D(32, (4,4), activation='relu', data_format='channels_last')(x)
         x = Flatten()(x)
-        x = Dense(128, activation = 'relu')(x)
+        x = Dense(64, activation = 'relu')(x)
         out = Dense(self._n_actions, activation='linear', name='action_values')(x)
 
         model = Model(inputs=input_board, outputs=out)
-        model.compile(optimizer=RMSprop(0.005), loss=huber_loss)
+        model.compile(optimizer=RMSprop(0.001), loss=huber_loss)
         # model.compile(optimizer=RMSprop(0.0005), loss='mean_squared_error')
 
         return model
@@ -579,7 +580,6 @@ class SupervisedLearningAgent(DeepQLearningAgent):
         self._model_action_out = Softmax()(self._model.get_layer('action_values').output)
         self._model_action = Model(inputs=self._model.get_layer('input').input, outputs=self._model_action_out)
         self._model_action.compile(optimizer=RMSprop(0.005), loss='categorical_crossentropy')
-        self._max_output = -np.inf
         
     def train_agent(self, batch_size=32, num_games=1, epochs=5, reward_clip=False):
         '''
@@ -588,32 +588,26 @@ class SupervisedLearningAgent(DeepQLearningAgent):
             error (float) : the current mse
         '''
         s, a, r, next_s, done = self._buffer.sample(self.get_buffer_size())
-        # in this case, the best action has some value based on rewards
-        # we will not worry about the other values
-        # current_model = self._target_net if self._use_target_net else self._model
-        # next_model_outputs = self._get_model_outputs(next_s, current_model)
-        # discounted_reward = r + (self._gamma * np.max(next_model_outputs, axis = 1).reshape(-1, 1)) * (1-done)
-        # target = self._get_model_outputs(s)
-        # target = (1-a)*target + a*discounted_reward
-        # target = (1-a)*target + a*r # take discounted future rewards
-        # fit
+        # fit using the actions as assumed to be best
         history = self._model_action.fit(self._normalize_board(s), a, epochs=epochs)
-        loss = round(history['loss'][-1], 5)
+        loss = round(history.history['loss'][-1], 5)
         # loss = self._model_action.evaluate(self._normalize_board(s), a, verbose=0)
         # keep track of max of output
-        self._max_output = max(np.max(self._model.predict(self._normalize_board(s))), self._max_output)
         return loss
 
-    def get_max_output():
-        return self._max_output
+    def get_max_output(self):
+        s, _, _, _, _ = self._buffer.sample(self.get_buffer_size())
+        max_value = np.max(self._model.predict(self._normalize_board(s)))
+        return max_value
 
-    def normalize_output_layer(self, max_value):
-        if(max_value is None):
-            max_value = self._max_output
-        if(np.isnan(max_value) or np.isnan(self._max_output)):
-            max_value = 1
+    def normalize_layers(self, max_value=None):
+        # normalize output layers by this value
+        if(max_value is None or np.isnan(max_value)):
+            max_value = 1.0
+        # dont normalize all layers as that will shrink the
+        # output proportional to the no of layers
         self._model.get_layer('action_values').set_weights(\
-           self._model.get_layer('action_values').get_weights()/max_value)
+           [x/max_value for x in self._model.get_layer('action_values').get_weights()])
 
 class BreadthFirstSearchAgent(Agent):
     '''

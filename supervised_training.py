@@ -38,11 +38,11 @@ if(generate_training_data):
     '''
     # generate training data
     # agent = HamiltonianCycleAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=10000)
-    agent = BreadthFirstSearchAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=10000)
+    agent = BreadthFirstSearchAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=40000)
     for index in tqdm(range(1)):
         # make small changes to the buffer and slowly train
         current_rewards = play_game(env, agent, n_actions, epsilon=-1,
-                            n_games=500, record=True, sample_actions=False,
+                            n_games=2000, record=True, sample_actions=False,
                             reward_type='discounted_future')
 
         file_path = 'models/{:s}'.format(version)
@@ -62,8 +62,7 @@ if(do_training):
         agent.load_buffer(file_path=file_path, iteration=((index%total_files)+1))
         print(agent.get_buffer_size())
         # make small changes to the buffer and slowly train
-        loss = agent.train_agent(epochs=2)
-        max_value = agent.get_max_output()
+        loss = agent.train_agent(epochs=20)
         print('Loss at buffer {:d} is : {:.5f}'.format((index%total_files)+1, loss))
         agent.update_target_net()
     '''
@@ -71,7 +70,7 @@ if(do_training):
     to prevent explosion in outputs, keep track of max of output
     during training, inspired from arXiv:1709.04083v2
     '''
-    agent.normalize_output_layer()
+    agent.normalize_layers(agent.get_max_output())
     agent.update_target_net()
     # save the trained model
     agent.save_model(file_path='models/{:s}'.format(version))
