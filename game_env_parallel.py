@@ -13,24 +13,6 @@ import numpy as np
 from collections import deque
 import matplotlib.pyplot as plt
 
-class Position:
-    '''
-    Class for defining any position on a 2D grid
-    Attributes:
-        row (int) : contains the row for a 2D grid
-        col (int) : contains the column for a 2D grid
-    '''
-    def __init__(self, row = 0, col = 0):
-        self.row = row
-        self.col = col
-
-    def set_position(self, row = None, col = None):
-        ''' modify the existing position coordinate '''
-        if(row is not None):
-            self.row = row
-        if(col is not None):
-            self.col = col
-
 class Snake:
     '''
     Class for the snake game.
@@ -46,7 +28,7 @@ class Snake:
                                    snake is moving
         snake (queue) : a queue to store the positions of the snake body
     '''
-    def __init__(self, board_size=10, frames=2, n_games=10, start_length=5, seed=42,
+    def __init__(self, board_size=10, frames=2, games=10, start_length=5, seed=42,
                  max_time_limit=298):
         '''
         Initialization function for the environment.
@@ -58,7 +40,7 @@ class Snake:
         self._n_actions = 4 # 0, 1, 2, 3
         self._board_size = board_size
         self._n_frames = frames
-        self._n_games = n_games
+        self._n_games = games
         self._rewards = {'out':-1, 'food':1, 'time':0, 'no_food':0}
         # start length is constrained to be less than half of board size
         self._start_length = min(start_length, (board_size-2)//2)
@@ -77,11 +59,11 @@ class Snake:
         # queue for board
         self._board = deque(maxlen = self._n_frames)
         # define the convolutions for movement operations
-        self._action_conv = np.zeros((self._n_actions,3,3))
-        self._action_conv[0,1,0] = 1
-        self._action_conv[1,2,1] = 1
-        self._action_conv[2,1,2] = 1
-        self._action_conv[3,0,1] = 1
+        self._action_conv = np.zeros((3,3,self._n_actions), dtype=np.uint8)
+        self._action_conv[1,0,0] = 1
+        self._action_conv[2,1,1] = 1
+        self._action_conv[1,2,2] = 1
+        self._action_conv[0,1,3] = 1
 
     def _queue_to_board(self):
         '''
@@ -96,7 +78,6 @@ class Snake:
         ''' combine all elements together to get the board '''
         board = self._border + (self._body > 0)*self._value['snake'] + \
                 self._head*self._value['head'] + self._food*self._value['food']
-        print(board)
         return board.copy()
 
     def _set_first_frame(self):
@@ -143,13 +124,14 @@ class Snake:
         '''
         # initialize snake, head takes the value 1 always
         self._body = np.zeros((self._n_games, self._board_size, self._board_size))
-        self._food, self._head = self._body.copy(), self._body.copy()
+        self._food, self._head = self._body.copy().astype(np.uint8), self._body.copy().astype(np.uint8)
         self._snake_length = self._start_length
         self._count_food = 0
         # assume snake is just head + 1 body initially, place randomly across games
         self._body[:,self._board_size//2, 1:self._snake_length] = \
             np.arange(self._snake_length-1,0,-1).reshape(1,1,-1)
         self._head[:, self._board_size//2, self._snake_length] = 1
+        self._snake_direction = np.zeros((self._n_games,), dtype=np.uint8)
         # first view of the board
         board = self._calculate_board()
         # initialize the queue
@@ -189,24 +171,42 @@ class Snake:
         m = food_pos.max((1,2)).reshape(self._n_games,1,1)
         food_pos = ((food_pos == m) & (food_pos > self._value['board']))
         m = self._food.max((1,2)).reshape(self._n_games,1,1)
-        self._food = food_pos * (1-m) + self._food * m
+        self._food = (food_pos * (1-m) + self._food * m).astype(np.uint8)
         self._set_first_frame()
 
-    def _put_food(self):
-        ''' put the food in the required spot '''
-        self._board[0][self._food.row, self._food.col] = self._value['food']
+    def _get_new_direction(self, action, current_direction):
+        '''
+        get the new direction after taking the specified action
+        Returns:
+            direction (int) : the new direction of motion
+        '''
+        new_dir = current_direction.copy()
+        f = (np.abs(action - current_direction) != 2) & (action != -1)
+        new_dir[f] = action[f]
+        return new_dir.copy()
 
-    def _get_new_head(self, action):
+    def _get_new_head(self, action, current_direction):
         '''
         get the position for the new head through the action
+        first do convolution operations for all actions, then use
+        one hot encoded actions for each game to get the final position of the new head
         Returns:
             new_head (Position) : position class for the new head
         '''
-        conv = np.zeros((self._n_games,self._n_actions,3,3))
-        conv[np.arange(self._n_games), action] = 1
-        conv = (conv*self._action_conv).sum(1)
-        new_head = self._head * conv
-        return new_head
+        action = self._get_new_direction(action, current_direction)
+        one_hot_action = np.zeros((self._n_games,1,1,self._n_actions), dtype=np.uint8)
+        one_hot_action[np.arange(self._n_games), :, :, action] = 1
+        hstr = self._head.strides
+        new_head = np.lib.stride_tricks.as_strided(self._head, 
+                       shape=(self._n_games,self._board_size-3+1,self._board_size-3+1,3,3),
+                       strides=(hstr[0],hstr[1],hstr[2],hstr[1],hstr[2]))
+                       # strides determine how much steps are needed to reach the next element
+                       # in that direction, to decide strides for the function, visualize
+                       # with the expected output
+        new_head = np.tensordot(new_head, self._action_conv) # where conv is (3,3,4)
+        new_head = np.pad((new_head * one_hot_action).sum(3),
+                        1,mode='constant', constant_values=0)[1:-1] # sum along last axis
+        return new_head.copy()
 
     def step(self, action):
         '''
