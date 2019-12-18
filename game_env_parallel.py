@@ -326,12 +326,12 @@ class Snake:
                             self._rewards['time'] * np.ones((self._n_games,), dtype=np.int16),\
                             np.zeros((self._n_games,), dtype=np.uint8),\
                             np.zeros((self._n_games), dtype=np.uint8)
+        done_copy = self._done.copy()
         # get the new head
         #####################################
         new_head = self._get_new_head(action, self._snake_direction)
         # check if no position available for food
-        f1 = ((self._board[0] == self._value['board']).sum((1,2)) == 0) & \
-               ((self._board[0] == self._value['food']).sum((1,2)) == 0)
+        f1 = (self._snake_length == (self._board_size-2)**2)
         self._done[f1] = 1
         reward[f1] += self._get_food_reward()
         termination_reason[f1] = 1
@@ -375,6 +375,9 @@ class Snake:
         #####################################
         # if normal movement, no other updates needed
         # print(f1, f2, f3, f4, f5)
+        # if game already ended in prev frame, set all rewards to zero
+        reward[done_copy == 1] = 0
+
         return reward, can_eat_food, termination_reason, new_head
 
     def _move_snake(self, action, can_eat_food, new_head):

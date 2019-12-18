@@ -10,8 +10,9 @@ from tqdm import tqdm
 from collections import deque
 import pandas as pd
 import time
-from utils import play_game
+from utils import play_game, play_game2
 from game_environment import Snake
+from game_env_parallel import Snake as Snake2
 import tensorflow as tf
 from agent import DeepQLearningAgent, PolicyGradientAgent, AdvantageActorCriticAgent
 
@@ -22,11 +23,7 @@ frames = 2 # keep frames >= 2
 version = 'v15'
 max_time_limit = 998 # 998
 supervised = False
-
-# setup the environment
-env = Snake(board_size=board_size, frames=frames, max_time_limit=max_time_limit)
-s = env.reset()
-n_actions = env.get_num_actions()
+n_actions = 4
 
 # setup the agent
 agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=40000)
@@ -76,7 +73,7 @@ if(agent_type in ['AdvantageActorCriticAgent']):
     decay = 1
 
 # define no of episodes, logging frequency
-episodes = 1 * (10**5)
+episodes = 1 * (10**4)
 log_frequency = 500
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
@@ -90,16 +87,31 @@ if(agent_type in ['DeepQLearningAgent']):
         except FileNotFoundError:
             pass
     else:
-        _ = play_game(env, agent, n_actions, n_games=6000, record=True,
-                    epsilon=epsilon, verbose=True, reset_seed=False)
+        # setup the environment
+        games = 6000
+        env = Snake2(board_size=board_size, frames=frames, 
+                    max_time_limit=max_time_limit, games=int(games/100),
+                    frame_mode=True)
+        ct = time.time()
+        _ = play_game2(env, agent, n_actions, n_games=int(games/100), record=True,
+                       epsilon=epsilon, verbose=True, reset_seed=False,
+                       frame_mode=True, total_frames=games*5)
+        print('Playing {:d} frames took {:.2f}s'.format(games*5, time.time()-ct))
+
+env = Snake2(board_size=board_size, frames=frames, 
+            max_time_limit=max_time_limit, games=n_games_training*20,
+            frame_mode=True)
+env2 = Snake2(board_size=board_size, frames=frames, 
+            max_time_limit=max_time_limit, games=10)
 
 # training loop
 model_logs = {'iteration':[], 'reward_mean':[], 'reward_dev':[], 'loss':[]}
 for index in tqdm(range(episodes)):
     # make small changes to the buffer and slowly train
-    _ = play_game(env, agent, n_actions, epsilon=epsilon,
-                        n_games=n_games_training, record=True,
-                    sample_actions=sample_actions, reward_type=reward_type)
+    _ = play_game2(env, agent, n_actions, epsilon=epsilon,
+                        n_games=n_games_training*20, record=True,
+                    sample_actions=sample_actions, reward_type=reward_type,
+                    frame_mode=True, total_frames=1)
     loss = agent.train_agent(batch_size=32, num_games=n_games_training, reward_clip=False)
 
     if(agent_type in ['PolicyGradientAgent', 'AdvantageActorCriticAgent']):
@@ -110,7 +122,7 @@ for index in tqdm(range(episodes)):
     if((index+1)%log_frequency == 0):
         model_logs['loss'].append(loss)
         # keep track of agent rewards_history
-        current_rewards = play_game(env, agent, n_actions, n_games=10, epsilon=-1,
+        current_rewards = play_game2(env2, agent, n_actions, n_games=10, epsilon=-1,
                                     record=False, sample_actions=False)
         model_logs['iteration'].append(index+1)
         model_logs['reward_mean'].append(round(np.mean(current_rewards), 2))

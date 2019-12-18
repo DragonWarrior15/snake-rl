@@ -70,6 +70,59 @@ def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
                                     next_s_list[i], done_list[i])
     return rewards
 
+def play_game2(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
+              verbose=False, reset_seed=False, sample_actions=False,
+              reward_type='current', frame_mode=False, total_frames=10):
+    '''
+    function to play some games and return the rewards list
+    has reset seed option to keep the board exactly same every time
+    if epsilon is being used, it should be between 0 to 1
+    use negative epsilon in case using on policy algorithms
+    '''
+    # epsilon = min(max(0, epsilon), 1)
+    rewards = np.zeros((n_games,), dtype=np.int16)
+    # iterator = tqdm(range(n_games)) if verbose else range(n_games)
+    if(reset_seed):
+        np.random.seed(429834)
+    s = env.reset()
+    done = np.zeros((n_games,), dtype=np.uint8)
+    s_list, action_list, reward_list, next_s_list, done_list = [], [], [], [], []
+    frames = 0
+    while(not frame_mode and not done.all()) or (frame_mode and frames < total_frames):
+        # use epsilon greedy policy to get next action
+        if(np.random.random() <= epsilon):
+            action = np.random.choice(np.arange(n_actions, dtype=np.uint8), n_games)
+        else:
+            if(sample_actions):
+                probs = agent.get_action_proba(s)
+                action = np.random.choice(n_actions, p=probs)
+            else:
+                action = agent.move(s, env.get_values())
+        next_s, reward, done, info = env.step(action)
+        if(record):
+            # handle (info['termination_reason'] != 'time_up') later
+            if(reward_type == 'current'):
+                agent.add_to_buffer(s, action, reward, next_s, done)
+            elif(reward_type == 'discounted_future'):
+                s_list.append(s.copy())
+                action_list.append(action)
+                reward_list.append(reward)
+                next_s_list.append(next_s.copy())
+                done_list.append(done)
+            else:
+                assert reward_type in ['current', 'discounted_future'], \
+                        'reward type not understood !'
+        rewards += reward
+        s = next_s.copy()
+        frames += n_games
+    # if using future discounted rewards, then add everything to buffer here
+    if(record and reward_type == 'discounted_future'):
+        reward_list = calculate_discounted_rewards(reward_list, agent.get_gamma())
+        for i in range(len(reward_list)):
+            agent.add_to_buffer(s_list[i], action_list[i], reward_list[i],\
+                                next_s_list[i], done_list[i])
+    return rewards
+
 def visualize_game(env, agent, path='images/game_visual.png', debug=False,
                     animate=False, fps=10):
     print('Starting Visualization')

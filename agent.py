@@ -1,7 +1,7 @@
 '''
 store all the agents here
 '''
-from replay_buffer import ReplayBuffer
+from replay_buffer import ReplayBuffer, ReplayBuffer2
 import numpy as np
 import time
 import pickle
@@ -18,10 +18,13 @@ from tensorflow.keras.regularizers import l2
 def huber_loss(y_true, y_pred, delta=1):
     ''' keras implementation for huber loss '''
     error = (y_true - y_pred)
-    flag = tf.cast(tf.math.abs(error) < delta, tf.float32)
+    quad_error = 0.5*tf.math.square(error)
+    lin_error = delta*(tf.math.abs(error) - 0.5*delta)
     # quadratic error, linear error
-    return tf.reduce_mean(0.5*flag*tf.math.square(error) + \
-                (1-flag)*(delta*(tf.math.abs(error) - 0.5*delta)), axis=-1)
+    return tf.where(tf.math.abs(error) < delta, quad_error, lin_error)
+
+def mean_huber_loss(y_true, y_pred, delta=1):
+    return tf.reduce_mean(huber_loss(y_true, y_pred, delta))
 
 class Agent():
     '''
@@ -47,7 +50,8 @@ class Agent():
         ''' reset current buffer '''
         if(buffer_size is not None):
             self._buffer_size = buffer_size
-        self._buffer = ReplayBuffer(self._buffer_size)
+        self._buffer = ReplayBuffer2(self._buffer_size, self._board_size, 
+                                    self._n_frames, self._n_actions)
 
     def get_buffer_size(self):
         ''' get the current buffer size '''
@@ -56,11 +60,8 @@ class Agent():
     def add_to_buffer(self, board, action, reward, next_board, done):
         '''
         add current game step to the replay buffer
-        also maps action back to one hot encoded version
         '''
-        one_hot_action = np.zeros((1, self._n_actions))
-        one_hot_action[0, action] = 1
-        self._buffer.add_to_buffer([board, one_hot_action, reward, next_board, done])
+        self._buffer.add_to_buffer(board, action, reward, next_board, done)
 
     def save_buffer(self, file_path='', iteration=None):
         ''' save the buffer to disk '''
@@ -140,7 +141,7 @@ class DeepQLearningAgent(Agent):
     def move(self, board, value=None):
         ''' get the action using agent policy '''
         model_outputs = self._get_model_outputs(board, self._model)
-        return int(np.argmax(model_outputs))
+        return np.argmax(model_outputs, axis=1)
 
     def _agent_model(self):
         '''
@@ -155,7 +156,7 @@ class DeepQLearningAgent(Agent):
         out = Dense(self._n_actions, activation='linear', name='action_values')(x)
 
         model = Model(inputs=input_board, outputs=out)
-        model.compile(optimizer=RMSprop(0.001), loss=huber_loss)
+        model.compile(optimizer=RMSprop(0.001), loss=mean_huber_loss)
         # model.compile(optimizer=RMSprop(0.0005), loss='mean_squared_error')
 
         return model
@@ -208,7 +209,7 @@ class DeepQLearningAgent(Agent):
         Returns:
             error (float) : the current mse
         '''
-        s, a, r, next_s, done = self._buffer.sample(batch_size, shuffle=True)
+        s, a, r, next_s, done = self._buffer.sample(batch_size)
         # calculate the discounted reward, and then train accordingly
         current_model = self._target_net if self._use_target_net else self._model
         next_model_outputs = self._get_model_outputs(next_s, current_model)
