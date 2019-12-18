@@ -44,6 +44,7 @@ class Snake:
         self._rewards = {'out':-1, 'food':1, 'time':0, 'no_food':0}
         # start length is constrained to be less than half of board size
         self._start_length = min(start_length, (board_size-2)//2)
+        # self._start_length = 2 # fix for random positioning
         # set numpy seed for reproducible results
         # np.random.seed(seed)
         # time limit to contain length of game, -1 means run till end
@@ -84,6 +85,27 @@ class Snake:
         '''
         board = np.stack([x for x in self._board], axis=3)
         return board.copy()
+
+    def _random_seq(self):
+        ''' shuffle the positions for food '''
+        seq = np.arange(1,1+self._board_size**2, dtype=np.uint16)
+        self._seq = np.zeros((self._n_games,self._board_size,self._board_size))
+        for i in range(self._n_games):
+            np.random.shuffle(seq)
+            self._seq[i] = seq.copy().reshape((1,self._board_size,self._board_size))
+
+    def _random_snake(self):
+        ''' random templates for snake spawn '''
+        strides = self._board_size - 2 - self._start_length + 1
+        self._body_random = np.zeros((strides * (self._board_size-2), 
+                                      self._board_size, self._board_size), 
+                                      dtype=np.uint16)
+        self._head_random = self._body_random.copy()
+        for i in range(strides):
+            idx1 = np.arange(0+i*(self._board_size-2),0+(i+1)*(self._board_size-2), dtype=np.uint8)
+            idx2 = np.arange(1,self._board_size-1, dtype=np.uint8)
+            self._body_random[idx1,idx2,i+1:i+1+self._start_length-1] = (np.arange(self._start_length-1, dtype=np.uint16)+1)
+            self._head_random[idx1,idx2,i+1+self._start_length-1] = 1
 
     def _calculate_board(self):
         ''' combine all elements together to get the board '''
@@ -138,15 +160,20 @@ class Snake:
         Returns:
             board : the current board state
         '''
+        # random generations
+        # random number seq for food
+        self._random_seq()
+        # random boards for snake position (all horizontal)
+        self._random_snake()
+        
         # initialize snake, head takes the value 1 always
-        self._body = np.zeros((self._n_games, self._board_size, self._board_size), dtype=np.uint16)
-        self._food, self._head = self._body.copy().astype(np.uint8), self._body.copy().astype(np.uint8)
+        self._food = np.zeros((self._n_games, self._board_size, self._board_size), dtype=np.uint8)
+        random_indices = np.random.choice(np.arange(self._body_random.shape[0]), self._n_games)
+        self._body, self._head = self._body_random[random_indices].copy(),\
+                                    self._head_random[random_indices].copy()
+
         self._snake_length = self._start_length * np.ones((self._n_games), dtype=np.uint16)
         self._count_food = np.zeros((self._n_games), dtype=np.uint16)
-        # assume snake is just head + 1 body initially, place randomly across games
-        self._body[:,self._board_size//2, 1:self._start_length] = \
-            np.arange(1,self._start_length).reshape(1,1,-1)
-        self._head[:, self._board_size//2, self._start_length] = 1
         self._snake_direction = np.zeros((self._n_games,), dtype=np.uint8)
         # first view of the board
         board = self._calculate_board()
@@ -172,18 +199,16 @@ class Snake:
         fsum = self._done.sum()
         self._food[f] = np.zeros((fsum, self._board_size,self._board_size),
                                  dtype=np.uint8)
-        self._head[f] = np.zeros((fsum, self._board_size,self._board_size),
-                                 dtype=np.uint8)
-        self._body[f] = np.zeros((fsum, self._board_size,self._board_size),
-                                 dtype=np.uint8)
+        random_indices = np.random.choice(np.arange(self._body_random.shape[0]), fsum)
+        self._body[f], self._head[f] = self._body_random[random_indices].copy(),\
+                                    self._head_random[random_indices].copy()
+
         # assign the body
-        self._body[f,self._board_size//2, 1:self._start_length] = \
-            np.arange(1,self._start_length).reshape(1,1,-1)
-        self._head[f, self._board_size//2, self._start_length] = 1
         self._snake_direction[f] = 0
         self._snake_length[f] = self._start_length
         self._time[f] = 0
         self._done[f] = 0
+        self._get_food()
         self._set_first_frame()
 
     def get_num_actions(self):
@@ -207,10 +232,7 @@ class Snake:
         find the coordinates of the point to put the food at
         places which are occupied by the board
         '''
-        board = self._board[0]
-        seq = np.arange(0,(self._n_games * (self._board_size**2)))
-        np.random.shuffle(seq)
-        food_pos = (board == self._value['board']) * seq.reshape(self._n_games,self._board_size,self._board_size)
+        food_pos = (self._board[0] == self._value['board']) * self._seq
         m = food_pos.max((1,2)).reshape(self._n_games,1,1)
         food_pos = ((food_pos == m) & (food_pos > self._value['board']))
         self._food = self._weighted_sum(1-self._food.max((1,2)), food_pos, self._food).astype(np.uint8)
@@ -240,14 +262,16 @@ class Snake:
         hstr = self._head.strides
         new_head = np.lib.stride_tricks.as_strided(self._head, 
                        shape=(self._n_games,self._board_size-3+1,self._board_size-3+1,3,3),
-                       strides=(hstr[0],hstr[1],hstr[2],hstr[1],hstr[2]))
+                       strides=(hstr[0],hstr[1],hstr[2],hstr[1],hstr[2]),
+                       writeable=False)
                        # strides determine how much steps are needed to reach the next element
                        # in that direction, to decide strides for the function, visualize
                        # with the expected output
-        new_head = np.tensordot(new_head, self._action_conv) # where conv is (3,3,4)
-        new_head = np.pad((new_head * one_hot_action).sum(3),
-                        1,mode='constant', constant_values=0)[1:-1] # sum along last axis
-        return new_head.copy()
+        # where conv is (3,3,4) and sum along last axis
+        new_head = (np.tensordot(new_head,self._action_conv) * one_hot_action).sum(3)
+        new_head1 = np.zeros((self._n_games,self._board_size,self._board_size), dtype=np.uint8)
+        new_head1[:,1:self._board_size-1,1:self._board_size-1] = new_head
+        return new_head1.copy()
 
     def step(self, action):
         '''
