@@ -29,7 +29,7 @@ class Snake:
         snake (queue) : a queue to store the positions of the snake body
     '''
     def __init__(self, board_size=10, frames=2, games=10, start_length=5, seed=42,
-                 max_time_limit=298):
+                 max_time_limit=298, frame_mode=False):
         '''
         Initialization function for the environment.
         '''
@@ -64,6 +64,17 @@ class Snake:
         self._action_conv[2,1,1] = 1
         self._action_conv[1,2,2] = 1
         self._action_conv[0,1,3] = 1
+        # terminaiton reason dict
+        self._termination_reason_dict = {
+            'game_end'        : 1,
+            'collision_wall'  : 2,
+            'collision_self'  : 3,
+            'time_up'         : 4,
+            'time_up_no_food' : 5
+        }
+        # whether frame mode or game mode, in former, game
+        # does a soft reset every time any board ends
+        self._frame_mode = frame_mode
 
     def _queue_to_board(self):
         '''
@@ -80,8 +91,13 @@ class Snake:
                 self._head*self._value['head'] + self._food*self._value['food']
         return board.copy()
 
+    def _weighted_sum(self, w, x1, x2):
+        w = w.reshape(-1,1,1)
+        return (w*x1 + (1-w)*x2).copy()
+
     def _set_first_frame(self):
-        self._board[0] = self._calculate_board()
+        board = self._calculate_board()
+        self._board[0] = self._weighted_sum((1-self._done), board, self._board[0])
 
     def print_game(self):
         ''' prints the current state (board) '''
@@ -123,14 +139,14 @@ class Snake:
             board : the current board state
         '''
         # initialize snake, head takes the value 1 always
-        self._body = np.zeros((self._n_games, self._board_size, self._board_size))
+        self._body = np.zeros((self._n_games, self._board_size, self._board_size), dtype=np.uint16)
         self._food, self._head = self._body.copy().astype(np.uint8), self._body.copy().astype(np.uint8)
-        self._snake_length = self._start_length
-        self._count_food = 0
+        self._snake_length = self._start_length * np.ones((self._n_games), dtype=np.uint16)
+        self._count_food = np.zeros((self._n_games), dtype=np.uint16)
         # assume snake is just head + 1 body initially, place randomly across games
-        self._body[:,self._board_size//2, 1:self._snake_length] = \
-            np.arange(self._snake_length-1,0,-1).reshape(1,1,-1)
-        self._head[:, self._board_size//2, self._snake_length] = 1
+        self._body[:,self._board_size//2, 1:self._start_length] = \
+            np.arange(1,self._start_length).reshape(1,1,-1)
+        self._head[:, self._board_size//2, self._start_length] = 1
         self._snake_direction = np.zeros((self._n_games,), dtype=np.uint8)
         # first view of the board
         board = self._calculate_board()
@@ -140,8 +156,35 @@ class Snake:
         # modify the food position on the board, after board queue initialized
         self._get_food()
         # set time elapsed to 0
-        self._time = np.zeros((self._n_games,1))
+        self._time = np.zeros((self._n_games), dtype=np.uint16)
+        self._done = np.zeros((self._n_games,), dtype=np.uint8)
+        # set first frame
+        self._set_first_frame()
         return self._queue_to_board()
+
+    def _soft_reset(self):
+        '''
+        function to do soft reset of the game, works when playing
+        in frame mode, will reset all the boards where the game
+        has ended and then initialize them
+        '''
+        f = (self._done == 1)
+        fsum = self._done.sum()
+        self._food[f] = np.zeros((fsum, self._board_size,self._board_size),
+                                 dtype=np.uint8)
+        self._head[f] = np.zeros((fsum, self._board_size,self._board_size),
+                                 dtype=np.uint8)
+        self._body[f] = np.zeros((fsum, self._board_size,self._board_size),
+                                 dtype=np.uint8)
+        # assign the body
+        self._body[f,self._board_size//2, 1:self._start_length] = \
+            np.arange(1,self._start_length).reshape(1,1,-1)
+        self._head[f, self._board_size//2, self._start_length] = 1
+        self._snake_direction[f] = 0
+        self._snake_length[f] = self._start_length
+        self._time[f] = 0
+        self._done[f] = 0
+        self._set_first_frame()
 
     def get_num_actions(self):
         ''' get total count of actions '''
@@ -170,9 +213,7 @@ class Snake:
         food_pos = (board == self._value['board']) * seq.reshape(self._n_games,self._board_size,self._board_size)
         m = food_pos.max((1,2)).reshape(self._n_games,1,1)
         food_pos = ((food_pos == m) & (food_pos > self._value['board']))
-        m = self._food.max((1,2)).reshape(self._n_games,1,1)
-        self._food = (food_pos * (1-m) + self._food * m).astype(np.uint8)
-        self._set_first_frame()
+        self._food = self._weighted_sum(1-self._food.max((1,2)), food_pos, self._food).astype(np.uint8)
 
     def _get_new_direction(self, action, current_direction):
         '''
@@ -222,27 +263,22 @@ class Snake:
         '''
         # assert action in list(range(self._n_actions)), "Action must be in " + list(range(self._n_actions))
         # assert action in self._actions, "Action must be in " + [k for k in self._actions]
-        reward, done = np.zeros((self._n_games,1)), np.zeros((self._n_games,1))
-
         # check if the current action is feasible
-        reward, done, can_eat_food, termination_reason = self._check_if_done(action)
-        if(done == 0):
-            # if not done, move the snake
-            self._move_snake(action, can_eat_food)
-            # update the direction of motion
-            self._snake_direction = self._get_new_direction(action, self._snake_direction)
-            # get the next food location
-            if(can_eat_food):
-                self._get_food()
-
+        reward, can_eat_food, termination_reason, new_head \
+                    = self._check_if_done(action)
+        # if not done, move the snake
+        self._move_snake(action, can_eat_food, new_head)
+        # update the direction of motion
+        self._snake_direction = self._get_new_direction(action, self._snake_direction)
         # update time
-        self._time += 1
+        self._time += (1-self._done)
         # info contains time elapsed etc
         info = {'time':self._time, 'food':self._count_food,
                 'termination_reason':termination_reason}
-
-
-        return self._queue_to_board(), reward, done, info
+        done_copy = self._done.copy()
+        if(self._frame_mode):
+            self._soft_reset()
+        return self._queue_to_board(), reward, done_copy, info
 
     def _get_food_reward(self):
         ''' try different rewards schemes for when food is eaten '''
@@ -262,77 +298,83 @@ class Snake:
             done : 1 if ended else 0
             can_eat_food : whether the current action leads to eating food
         '''
-        reward, done, can_eat_food, termination_reason = \
-                            self._rewards['time'] * np.ones((self._n_games,1)),\
-                            np.zeros((self._n_games,1)), np.zeros((self._n_games,1)), ['']*self._n_games
-        # check if the current action forces snake out of board
+        reward, can_eat_food, termination_reason = \
+                            self._rewards['time'] * np.ones((self._n_games,), dtype=np.int16),\
+                            np.zeros((self._n_games,), dtype=np.uint8),\
+                            np.zeros((self._n_games), dtype=np.uint8)
+        # get the new head
+        #####################################
         new_head = self._get_new_head(action, self._snake_direction)
-        while(1):
-            # check if no position available for food
-            if((self._board[0] == self._value['board']).sum() == 0 and \
-               (self._board[0] == self._value['food']).sum() == 0):
-                done = 1
-                reward += self._get_food_reward()
-                termination_reason = 'game_end'
-                break
-            # snake is colliding with border/obstacles
-            if(self._board[0][new_head.row, new_head.col] == self._value['border']):
-                done = 1
-                reward = self._get_death_reward()
-                termination_reason = 'collision_wall'
-                break
-            # collision with self, collision with tail is allowed
-            if(self._board[0][new_head.row, new_head.col] == self._value['snake']):
-                snake_tail = self._get_snake_tail()
-                if(not(new_head.row == snake_tail.row and new_head.col == snake_tail.col)):
-                    done = 1
-                    reward = self._get_death_reward()
-                    termination_reason = 'collision_self'
-                    break
-            # check if food
-            if(self._board[0][new_head.row, new_head.col] == self._value['food']):
-                done = 0
-                reward += self._get_food_reward()
-                self._count_food += 1
-                can_eat_food = 1
-            # check if time up
-            if(self._time >= self._max_time_limit and self._max_time_limit != -1):
-                done = 1
-                # check if no food eaten
-                if(self._snake_length == self._start_length and self._rewards['no_food'] != 0):
-                    termination_reason = 'time_up_no_food'
-                    reward += self._rewards['no_food']
-                else:
-                    termination_reason = 'time_up'
-                break
-            # if normal movement, no other updates needed
-            break
-        return reward, done, can_eat_food, termination_reason
+        # check if no position available for food
+        f1 = ((self._board[0] == self._value['board']).sum((1,2)) == 0) & \
+               ((self._board[0] == self._value['food']).sum((1,2)) == 0)
+        self._done[f1] = 1
+        reward[f1] += self._get_food_reward()
+        termination_reason[f1] = 1
+        #####################################
+        # snake is colliding with border/obstacles, conv returns board-2 size matrix, hence
+        # following logic is not valid since head will be all zeros if running into wall
+        # f2 = ((new_head + self._border) == (self._value['border'] + 1)).sum((1,2)).astype(np.bool)
+        f2 = (new_head.sum((1,2)) == 0)
+        f = f2 & ~f1
+        self._done[f] = 1
+        reward[f] = self._get_death_reward()
+        termination_reason[f] = 2
+        #####################################
+        # collision with self, collision with tail is allowed
+        f3 = ((self._body + new_head).min((1,2)) > 1) & \
+            ~((new_head*self._body).max((1,2)) == self._body.max((1,2)))
+        f = f3 & ~f2 & ~f1
+        self._done[f] = 1
+        reward[f] = self._get_death_reward()
+        termination_reason[f] = 3
+        #####################################
+        # check if food
+        f4 = ((self._food * new_head).sum((1,2)) == 1)
+        f = f4 & ~f3 & ~f2 & ~f1
+        reward[f] += self._get_food_reward()
+        # self._count_food += 1
+        can_eat_food[f] = 1
+        #####################################
+        # check if time up
+        if(self._max_time_limit != -1):
+            f5 = (self._time >= self._max_time_limit)
+            f = f5 & ~f4 & ~f3 & ~f2 & ~f1
+            self._done[f] = 1
+            termination_reason[f] = 4
+            # check if no food eaten
+            if(self._rewards['no_food'] != 0):
+                f6 = (self._snake_length == self._start_length)
+                f = f6 & ~f5 & ~f4 & ~f3 & ~f2 & ~f1
+                termination_reason[f] = 5
+                reward[f] += self._rewards['no_food']
+        #####################################
+        # if normal movement, no other updates needed
+        # print(f1, f2, f3, f4, f5)
+        return reward, can_eat_food, termination_reason, new_head
 
-    def _move_snake(self, action, can_eat_food):
+    def _move_snake(self, action, can_eat_food, new_head):
         '''
         moves the snake using the given action
         and updates the board accordingly
         '''
-        # get the coordinates for the new head
-        new_head = self._get_new_head(action, self._snake_direction)
-        # prepare new board as the last frame
-        new_board = self._board[0].copy()
-        # modify the next block of the snake body to be same color as snake
-        new_board[self._snake_head.row, self._snake_head.col] = self._value['snake']
-        # insert the new head into the snake queue
-        # different treatment for addition of food
-        # update the new board view as well
-        # if new head overlaps with the tail, special handling is needed
-        self._snake.append(new_head)
-        self._snake_head = new_head
-
-        if(can_eat_food):
-            self._snake_length += 1
-        else:
-            delete_pos = self._snake.popleft()
-            new_board[delete_pos.row, delete_pos.col] = self._value['board']
-        # update head position in last so that if head is same as tail
-        # the update is still correct
-        new_board[new_head.row, new_head.col] = self._value['head']
-        self._board.appendleft(new_board.copy())
+        # update snake
+        new_body = self._body.copy()
+        body_max = self._body.max((1,2))
+        new_body[self._body>0] -= 1
+        self._body = (self._done).reshape(-1,1,1)*self._body + \
+                     ((1-self._done)*can_eat_food).reshape(-1,1,1)*(self._body+(body_max+1).reshape(-1,1,1)*self._head) +\
+                     ((1-self._done)*(1-can_eat_food)).reshape(-1,1,1)*(new_body+body_max.reshape(-1,1,1)*self._head)
+        # update head
+        self._head = self._weighted_sum(self._done, self._head, new_head)
+        # get the next food location
+        if(can_eat_food.sum()>0):
+            # update parameters
+            self._snake_length[can_eat_food == 1] += 1
+            self._count_food[can_eat_food == 1] += 1
+            # adjust food position
+            self._food = self._weighted_sum((1-can_eat_food), self._food, 0)
+            self._get_food()
+        # calculate new board and append
+        self._board.appendleft(self._board[0].copy())
+        self._set_first_frame()
