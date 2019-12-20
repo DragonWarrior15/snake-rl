@@ -8,7 +8,24 @@ import time
 import pandas as pd
 import sys
 
-def calculate_discounted_rewards(rewards, discount_factor):
+def calculate_discounted_rewards(rewards, discount_factor=0.99):
+    '''
+    simple utility to calculate rewards discounted for
+    future values, useful in policy gradient
+    
+    Parameters
+    ----------
+    rewards : list
+        list containing individual step rewards for a single game
+    discount_factor : float, optional
+        the discount factor to apply for accounting future rewards
+        advisable to keep below one to get convergence
+    
+    Returns
+    ------
+    discounted rewards : list
+        same size as rewads, but accounting for future discounts
+    '''
     discounted_rewards = []
     for i in range(len(rewards)-1, -1, -1):
         if(i == len(rewards)-1):
@@ -26,6 +43,36 @@ def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
     has reset seed option to keep the board exactly same every time
     if epsilon is being used, it should be between 0 to 1
     use negative epsilon in case using on policy algorithms
+    this function runs env sequentially
+    play_game2 is for the parallel env implementation
+
+    Parameters
+    ----------
+    env : Environment Object
+    agent : Agent object
+        interacts with env
+    n_actions : int
+        count of actions
+    n_games : int, optional
+        Total games to play
+    epsilon : float, optional
+        for epsilon greedy policy, value < 0 means
+        no epsilon, and > 0 means always random policy
+    record : bool, optional
+        whether to add frames to agent buffer
+    verbose : bool, optional
+        whether to show progress (deprecated)
+    reset_seed : bool, optional
+        whether to reset numpy seed every time
+    sample_actions : bool, optional
+        whether to sample actions from agent probability dist
+    reward_type : str, optional
+        'current' or 'discounted future', latter used in policy gradient
+
+    Returns
+    -------
+    rewards : list
+        contains total reward values across n_games 
     '''
     # epsilon = min(max(0, epsilon), 1)
     rewards = []
@@ -35,23 +82,29 @@ def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
             np.random.seed(429834)
         rewards.append(0)
         s = env.reset()
+        # done set only for first run of while loop
         done = 0
+        # the following is useful for discounted rewards as not known in advance
         s_list, action_list, reward_list, next_s_list, done_list = [], [], [], [], []
         while(not done):
-            # use epsilon greedy policy to get next action
             if(np.random.random() <= epsilon):
+                # use epsilon greedy policy to get next action
                 action = np.random.choice(list(range(n_actions)))
             else:
                 if(sample_actions):
+                    # sample from prob dist
                     probs = agent.get_action_proba(s)
                     action = np.random.choice(n_actions, p=probs)
                 else:
+                    # get action with best q value
                     action = agent.move(s, env.get_values())
             next_s, reward, done, info = env.step(action)
+
             if(record and (info['termination_reason'] != 'time_up')):
                 if(reward_type == 'current'):
                     agent.add_to_buffer(s, action, reward, next_s, done)
                 elif(reward_type == 'discounted_future'):
+                    # add everything later to the buffer
                     s_list.append(s.copy())
                     action_list.append(action)
                     reward_list.append(reward)
@@ -60,8 +113,9 @@ def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
                 else:
                     assert reward_type in ['current', 'discounted_future'], \
                             'reward type not understood !'
-            rewards[-1] += reward
             s = next_s.copy()
+            # update current game total rewards
+            rewards[-1] += reward
         # if using future discounted rewards, then add everything to buffer here
         if(record and reward_type == 'discounted_future'):
             reward_list = calculate_discounted_rewards(reward_list, agent.get_gamma())
@@ -69,6 +123,134 @@ def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
                 agent.add_to_buffer(s_list[i], action_list[i], reward_list[i],\
                                     next_s_list[i], done_list[i])
     return rewards
+
+def play_game2(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
+              verbose=False, reset_seed=False, sample_actions=False,
+              reward_type='current', frame_mode=False, total_frames=10,
+              total_games=None, stateful=False, debug=False):
+    '''
+    function to play some games and return the rewards list
+    has reset seed option to keep the board exactly same every time
+    if epsilon is being used, it should be between 0 to 1
+    use negative epsilon in case using on policy algorithms
+    this function utilises the parallel numpy env
+    play_game is for the basic env implementation
+
+    Parameters
+    ----------
+    env : Environment Object
+    agent : Agent object
+        interacts with env
+    n_actions : int
+        count of actions
+    n_games : int, optional
+        Games to run in parallel
+    epsilon : float, optional
+        for epsilon greedy policy, value < 0 means
+        no epsilon, and > 0 means always random policy
+    record : bool, optional
+        whether to add frames to agent buffer
+    verbose : bool, optional
+        whether to show progress (deprecated)
+    reset_seed : bool, optional
+        whether to reset numpy seed every time
+    sample_actions : bool, optional
+        whether to sample actions from agent probability dist
+    reward_type : str, optional
+        'current' or 'discounted future', latter used in policy gradient
+    frame_mode : bool, optional
+        whether to run parallel env based on count of frames or count of games
+    total_frames : int, optional
+        if running frame mode, total frames to process before stopping
+    total_games : int, optional
+        if running frame mode and this is not None, use the value to determine
+        when to end, depending on total games played till the point
+    stateful : bool, optional
+        whether to preserve env state and not reset to beginning
+
+    Returns
+    -------
+    rewards : np array
+        contains total reward values across n_games, only useful
+        when not using the frame_mode, otherwise values across multiple
+        games, and may be incomplete
+    lengths : int
+        total sum of snake lengths across games that have terminated, not
+        useful in stateful as env could be running from some intermediate state
+    games : int
+        total no of games that have terminated, not useful in stateful as
+        env could be running from some intermediate state  
+    '''
+    rewards = 0 # to keep track of total reward across games
+    lengths = 0 # to keep track of total length across all games
+    if(reset_seed):
+        np.random.seed(42)
+    s = env.reset(stateful)
+    # this done is just for first run of the while loop
+    done = np.zeros((1,), dtype=np.uint8)
+    # the following is useful for discounted rewards as not known in advance
+    s_list, action_list, reward_list, next_s_list, done_list = [], [], [], [], []
+    frames, games = 0, 0
+
+    '''3 conditions to check, 
+    1) if not using frame mode then all games should not have ended
+    2) if using frame mode and total games is not provided, then fames
+       playes should be less than total frames asked for
+    3) if using frame mode and total games is provded, then total games
+       playes < total games asked for
+    ''' 
+    while(not frame_mode and not done.all()) or \
+         (frame_mode and total_games is None and frames < total_frames) or\
+         (frame_mode and total_games is not None and games < total_games):
+        if(np.random.random() <= epsilon):
+            # use epsilon greedy policy to get next action
+            action = np.random.choice(n_actions, n_games)
+        else:
+            # else select action using agent outputs
+            if(sample_actions):
+                # sample from prob dist
+                probs = agent.get_action_proba(s)
+                action = np.random.choice(n_actions, p=probs)
+            else:
+                # get action with best q value
+                action = agent.move(s, env.get_values())
+        # take 1 step in env across all games 
+        next_s, reward, done, info = env.step(action)
+
+        if(record):
+            # handle (info['termination_reason'] != 'time_up') later
+            if(reward_type == 'current'):
+                agent.add_to_buffer(s, action, reward, next_s, done)
+            elif(reward_type == 'discounted_future'):
+                # add everything later to the buffer
+                s_list.append(s.copy())
+                action_list.append(action)
+                reward_list.append(reward)
+                next_s_list.append(next_s.copy())
+                done_list.append(done)
+            else:
+                assert reward_type in ['current', 'discounted_future'], \
+                        'reward type not understood !'
+        s = next_s.copy()
+        rewards += np.dot(done, info['cumul_rewards'])
+        frames += n_games
+        games += done.sum()
+        # get only lengths where game ended
+        lengths += np.dot(done, info['length'])
+    # if using future discounted rewards, then add everything to buffer here
+    if(record and reward_type == 'discounted_future'):
+        reward_list = calculate_discounted_rewards(reward_list, agent.get_gamma())
+        for i in range(len(reward_list)):
+            agent.add_to_buffer(s_list[i], action_list[i], reward_list[i],\
+                                next_s_list[i], done_list[i])
+    
+    # since not frame mode, calculate lenghts at the end to avoid
+    # double counting 
+    if(not frame_mode):
+        lengths = np.dot(done, info['length'])
+        rewards = np.dot(done, info['cumul_rewards'])
+    
+    return rewards, lengths, games
 
 def visualize_game(env, agent, path='images/game_visual.png', debug=False,
                     animate=False, fps=10):

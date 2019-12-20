@@ -10,8 +10,8 @@ from tqdm import tqdm
 from collections import deque
 import pandas as pd
 import time
-from utils import play_game
-from game_environment import Snake
+from utils import play_game, play_game2
+from game_environment import Snake, SnakeNumpy
 import tensorflow as tf
 from agent import DeepQLearningAgent, PolicyGradientAgent, AdvantageActorCriticAgent
 
@@ -22,11 +22,7 @@ frames = 2 # keep frames >= 2
 version = 'v15'
 max_time_limit = 998 # 998
 supervised = False
-
-# setup the environment
-env = Snake(board_size=board_size, frames=frames, max_time_limit=max_time_limit)
-s = env.reset()
-n_actions = env.get_num_actions()
+n_actions = 4
 
 # setup the agent
 agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=40000)
@@ -49,8 +45,8 @@ if(agent_type in ['DeepQLearningAgent']):
     epsilon, epsilon_end = 1, 0.01
     reward_type = 'current'
     sample_actions = False
-    n_games_training = 5
-    decay = 0.99
+    n_games_training = 8
+    decay = 0.97
     if(supervised):
         # lower the epsilon since some starting policy has already been trained
         epsilon = 0.6
@@ -72,12 +68,13 @@ if(agent_type in ['AdvantageActorCriticAgent']):
     reward_type = 'current'
     sample_actions = True
     exploration_threshold = 0.1
-    n_games_training = 10
+    n_games_training = 8
     decay = 1
 
 # define no of episodes, logging frequency
-episodes = 1 * (10**5)
+episodes = 5 * (10**4)
 log_frequency = 500
+games_eval = 8
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
 # use only for DeepQLearningAgent
@@ -90,17 +87,35 @@ if(agent_type in ['DeepQLearningAgent']):
         except FileNotFoundError:
             pass
     else:
-        _ = play_game(env, agent, n_actions, n_games=6000, record=True,
-                    epsilon=epsilon, verbose=True, reset_seed=False)
+        # setup the environment
+        games = 512
+        env = SnakeNumpy(board_size=board_size, frames=frames, 
+                    max_time_limit=max_time_limit, games=games,
+                    frame_mode=True)
+        ct = time.time()
+        _ = play_game2(env, agent, n_actions, n_games=games, record=True,
+                       epsilon=epsilon, verbose=True, reset_seed=False,
+                       frame_mode=True, total_frames=games*64)
+        print('Playing {:d} frames took {:.2f}s'.format(games*64, time.time()-ct))
+
+env = SnakeNumpy(board_size=board_size, frames=frames, 
+            max_time_limit=max_time_limit, games=n_games_training*32,
+            frame_mode=True)
+env2 = SnakeNumpy(board_size=board_size, frames=frames, 
+            max_time_limit=max_time_limit, games=games_eval,
+            frame_mode=True)
 
 # training loop
-model_logs = {'iteration':[], 'reward_mean':[], 'reward_dev':[], 'loss':[]}
+model_logs = {'iteration':[], 'reward_mean':[],
+              'length_mean':[], 'games':[], 'loss':[]}
 for index in tqdm(range(episodes)):
     # make small changes to the buffer and slowly train
-    _ = play_game(env, agent, n_actions, epsilon=epsilon,
-                        n_games=n_games_training, record=True,
-                    sample_actions=sample_actions, reward_type=reward_type)
-    loss = agent.train_agent(batch_size=32, num_games=n_games_training, reward_clip=False)
+    _, _, _ = play_game2(env, agent, n_actions, epsilon=epsilon,
+                   n_games=n_games_training*32, record=True,
+                   sample_actions=sample_actions, reward_type=reward_type,
+                   frame_mode=True, total_frames=n_games_training*32, 
+                   stateful=True)
+    loss = agent.train_agent(batch_size=32, num_games=n_games_training, reward_clip=True)
 
     if(agent_type in ['PolicyGradientAgent', 'AdvantageActorCriticAgent']):
         # for policy gradient algorithm, we only take current episodes for training
@@ -108,14 +123,20 @@ for index in tqdm(range(episodes)):
 
     # check performance every once in a while
     if((index+1)%log_frequency == 0):
-        model_logs['loss'].append(loss)
+        model_logs['loss'].append(round(loss, 6))
         # keep track of agent rewards_history
-        current_rewards = play_game(env, agent, n_actions, n_games=10, epsilon=-1,
-                                    record=False, sample_actions=False)
+        current_rewards, current_lengths, current_games = \
+                    play_game2(env2, agent, n_actions, n_games=games_eval, epsilon=-1,
+                               record=False, sample_actions=False, frame_mode=True, 
+                               total_frames=-1, total_games=games_eval)
+        
         model_logs['iteration'].append(index+1)
-        model_logs['reward_mean'].append(round(np.mean(current_rewards), 2))
-        model_logs['reward_dev'].append(round(np.std(current_rewards), 2))
-        pd.DataFrame(model_logs)[['iteration', 'reward_mean', 'reward_dev', 'loss']].to_csv('model_logs/{:s}.csv'.format(version), index=False)
+        model_logs['reward_mean'].append(round(int(current_rewards)/current_games, 2))
+        # model_logs['reward_dev'].append(round(np.std(current_rewards), 2))
+        model_logs['length_mean'].append(round(int(current_lengths)/current_games, 2))
+        model_logs['games'].append(current_games)
+        pd.DataFrame(model_logs)[['iteration', 'reward_mean', 'length_mean', 'games', 'loss']]\
+          .to_csv('model_logs/{:s}.csv'.format(version), index=False)
 
     # copy weights to target network and save models
     if((index+1)%log_frequency == 0):
