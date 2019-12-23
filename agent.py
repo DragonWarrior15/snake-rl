@@ -157,7 +157,7 @@ class Agent():
         """
         return self._buffer.get_current_size()
 
-    def add_to_buffer(self, board, action, reward, next_board, done):
+    def add_to_buffer(self, board, action, reward, next_board, done, legal_moves):
         """Add current game step to the replay buffer
 
         Parameters
@@ -172,8 +172,11 @@ class Agent():
             State obtained after executing action on current state
         done : Numpy array or int
             Binary indicator for game termination
+        legal_moves : Numpy array
+            Binary indicators for actions which are allowed at next states
         """
-        self._buffer.add_to_buffer(board, action, reward, next_board, done)
+        self._buffer.add_to_buffer(board, action, reward, next_board, 
+                                   done, legal_moves)
 
     def save_buffer(self, file_path='', iteration=None):
         """Save the buffer to disk
@@ -212,11 +215,8 @@ class Agent():
             assert isinstance(iteration, int), "iteration should be an integer"
         else:
             iteration = 0
-        try:
-            with open("{}/buffer_{:04d}".format(file_path, iteration), 'rb') as f:
-                self._buffer = pickle.load(f)
-        except FileNotFoundError:
-            print("Couldn't locate models at {}, check provided path".format(file_path))
+        with open("{}/buffer_{:04d}".format(file_path, iteration), 'rb') as f:
+            self._buffer = pickle.load(f)
 
     def _point_to_row_col(self, point):
         """Covert a point value to row, col value
@@ -339,9 +339,9 @@ class DeepQLearningAgent(Agent):
         """
         # return board.copy()
         # return((board/128.0 - 1).copy())
-        return board/4.0
+        return board.astype(np.float32)/4.0
 
-    def move(self, board, value=None):
+    def move(self, board, legal_moves, value=None):
         """Get the action with maximum Q value
         
         Parameters
@@ -358,7 +358,7 @@ class DeepQLearningAgent(Agent):
         """
         # use the agent model to make the predictions
         model_outputs = self._get_model_outputs(board, self._model)
-        return np.argmax(model_outputs, axis=1)
+        return np.argmax(np.where(legal_moves==1, model_outputs, -np.inf), axis=1)
 
     def _agent_model(self):
         """Returns the model which evaluates Q values for a given state input
@@ -370,8 +370,8 @@ class DeepQLearningAgent(Agent):
         """
         # define the input layer, shape is dependent on the board size and frames
         input_board = Input((self._board_size, self._board_size, self._n_frames,), name='input')
-        x = Conv2D(16, (4,4), activation='relu', data_format='channels_last')(input_board)
-        x = Conv2D(32, (4,4), activation='relu', data_format='channels_last')(x)
+        x = Conv2D(16, (3,3), activation='relu', data_format='channels_last')(input_board)
+        x = Conv2D(32, (3,3), activation='relu', data_format='channels_last')(x)
         x = Flatten()(x)
         x = Dense(64, activation = 'relu')(x)
         # this layer contains the final output values, activation is linear since
@@ -379,8 +379,8 @@ class DeepQLearningAgent(Agent):
         out = Dense(self._n_actions, activation='linear', name='action_values')(x)
         # compile the model
         model = Model(inputs=input_board, outputs=out)
-        # model.compile(optimizer=RMSprop(0.001), loss=mean_huber_loss)
-        model.compile(optimizer=RMSprop(0.0005), loss='mean_squared_error')
+        model.compile(optimizer=RMSprop(0.0005), loss=mean_huber_loss)
+        # model.compile(optimizer=RMSprop(0.0005), loss='mean_squared_error')
 
         return model
 
@@ -399,18 +399,20 @@ class DeepQLearningAgent(Agent):
         model_outputs : Numpy array
             Action probabilities, shape is board.shape[0] * n_actions
         """
-        model_outputs = self._get_model_outputs(board, self._model)[0]
+        model_outputs = self._get_model_outputs(board, self._model)
         # subtracting max and taking softmax does not change output
         # do this for numerical stability
         model_outputs = np.clip(model_outputs, -10, 10)
-        model_outputs = model_outputs - max(model_outputs)
+        model_outputs = model_outputs - model_outputs.max(axis=1).reshape((-1,1))
         model_outputs = np.exp(model_outputs)
-        model_outputs = model_outputs/np.sum(model_outputs)
+        model_outputs = model_outputs/model_outputs.sum(axis=1).reshape((-1,1))
         return model_outputs
 
     def save_model(self, file_path='', iteration=None):
         """Save the current models to disk using tensorflow's
         inbuilt save model function (saves in h5 format)
+        saving weights instead of model as cannot load compiled
+        model with any kind of custom object (loss or metric)
         
         Parameters
         ----------
@@ -423,9 +425,9 @@ class DeepQLearningAgent(Agent):
             assert isinstance(iteration, int), "iteration should be an integer"
         else:
             iteration = 0
-        self._model.save("{}/model_{:04d}.h5".format(file_path, iteration))
+        self._model.save_weights("{}/model_{:04d}.h5".format(file_path, iteration))
         if(self._use_target_net):
-            self._target_net.save("{}/model_{:04d}_target.h5".format(file_path, iteration))
+            self._target_net.save_weights("{}/model_{:04d}_target.h5".format(file_path, iteration))
 
     def load_model(self, file_path='', iteration=None):
         """ load any existing models, if available """
@@ -449,12 +451,10 @@ class DeepQLearningAgent(Agent):
             assert isinstance(iteration, int), "iteration should be an integer"
         else:
             iteration = 0
-        try:
-            self._model = tf.keras.models.load_model("{}/model_{:04d}.h5".format(file_path, iteration))
-            if(self._use_target_net):
-                self._target_net  = tf.keras.models.load_model("{}/model_{:04d}_target.h5".format(file_path, iteration))
-        except FileNotFoundError:
-            print("Couldn't locate models at {}, check provided path".format(file_path))
+            self._model.load_weights("{}/model_{:04d}.h5".format(file_path, iteration))
+        if(self._use_target_net):
+            self._target_net.load_weights("{}/model_{:04d}_target.h5".format(file_path, iteration))
+        # print("Couldn't locate models at {}, check provided path".format(file_path))
 
     def print_models(self):
         """Print the current models using summary method"""
@@ -493,14 +493,17 @@ class DeepQLearningAgent(Agent):
             loss : float
             The current error (error metric is defined in reset_models)
         """
-        s, a, r, next_s, done = self._buffer.sample(batch_size)
+        s, a, r, next_s, done, legal_moves = self._buffer.sample(batch_size)
+        if(reward_clip):
+            r = np.sign(r)
         # calculate the discounted reward, and then train accordingly
         current_model = self._target_net if self._use_target_net else self._model
         next_model_outputs = self._get_model_outputs(next_s, current_model)
         # our estimate of expexted future discounted reward
-        discounted_reward = r + (self._gamma * np.max(next_model_outputs, axis = 1).reshape(-1, 1)) * (1-done)
-        if(reward_clip):
-            discounted_reward = np.sign(discounted_reward)
+        discounted_reward = r + \
+            (self._gamma * np.max(np.where(legal_moves==1, next_model_outputs, -np.inf), 
+                                  axis = 1)\
+                                  .reshape(-1, 1)) * (1-done)
         # create the target variable, only the column with action has different value
         target = self._get_model_outputs(s)
         # we bother only with the difference in reward estimate at the selected action
@@ -553,7 +556,7 @@ class PolicyGradientAgent(DeepQLearningAgent):
         DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames,
                                 buffer_size=buffer_size, gamma=gamma,
                                 n_actions=n_actions, use_target_net=False)
-        self._update_function = self._policy_gradient_updates()
+        self._actor_optimizer = tf.keras.optimizer.Adam(1e-6)
 
     def _agent_model(self):
         """Returns the model which evaluates prob values for a given state input
@@ -576,36 +579,6 @@ class PolicyGradientAgent(DeepQLearningAgent):
         # do not compile the model here, but rather use the outputs separately
         # in a training function to create any custom loss function
         # model.compile(optimizer = RMSprop(0.0005), loss = 'mean_squared_error')
-        return model
-
-    def _policy_gradient_updates(self, optimizer=RMSprop(0.00005)):
-        """A custom function for policy gradient losses
-        loss = yLogP + beta * PLogP (classification loss + entropy)
-
-        Parameters
-        optimizer : TensorFlow optimizer object
-            The optimizer to use for training
-        ----------
-        """
-        target = K.placeholder(name='target', shape=(None, self._n_actions))
-        beta = K.placeholder(name='beta', shape=())
-        num_games = K.placeholder(name='num_games', shape=())
-        # calculate policy
-        policy = tf.nn.softmax(self._model.output)
-        # policy = self._model.output
-        log_policy = tf.nn.log_softmax(self._model.output)
-        # to include negative rewards as well in the game
-        # positive_target = tf.dtypes.cast(tf.reshape(tf.math.greater(tf.reduce_sum(target, axis=1), 0), (-1, 1)), tf.float32)
-        # J_log_policy = tf.nn.log_softmax(positive_target * policy + (1 - positive_target) * (1 - policy))
-        # calculate loss
-        J = tf.reduce_sum(tf.multiply(target, log_policy))/num_games
-        entropy = -tf.reduce_sum(tf.multiply(policy, log_policy))/num_games
-        loss = -J - beta*entropy
-        # fit
-        updates = optimizer.get_updates(loss, self._model.trainable_weights)
-        # gradients = optimizer.get_gradients(loss, self._model.trainable_weights)
-        model = K.function([self._model.input, target, beta, num_games],
-                            [loss, J, entropy], updates=updates)
         return model
 
     def train_agent(self, batch_size=32, beta=0.1, normalize_rewards=False,
@@ -634,7 +607,7 @@ class PolicyGradientAgent(DeepQLearningAgent):
             The current loss (total loss, classification loss, entropy)
         """
         # in policy gradient, only complete episodes are used for training
-        s, a, r, _, _ = self._buffer.sample(self._buffer.get_current_size())
+        s, a, r, _, _, _ = self._buffer.sample(self._buffer.get_current_size())
         # unlike DQN, the discounted reward is not estimated but true one
         # we have defined custom policy graident loss function above
         # use that to train to agent model
@@ -642,8 +615,8 @@ class PolicyGradientAgent(DeepQLearningAgent):
         if(normalize_rewards):
             r = (r - np.mean(r))/(np.std(r) + 1e-8)
         target = np.multiply(a, r)
-        loss = self._update_function([self._prepare_input(s), target, beta, num_games])
-        # loss = [round(x, 5) for x in loss]
+        loss = actor_loss_update(self._prepare_input(s), target, self._model,
+                  self._actor_optimizer, beta=beta, num_games=num_games)
         return loss[0] if len(loss)==1 else loss
 
 class AdvantageActorCriticAgent(PolicyGradientAgent):
@@ -662,8 +635,8 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
         DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames,
                                 buffer_size=buffer_size, gamma=gamma,
                                 n_actions=n_actions, use_target_net=False)
-        self._model, self._action_values_model = self._model
-        self._actor_update = self._policy_gradient_updates(optimizer=tf.keras.optimizers.Adam(1e-6))
+        self._model, self._full_model = self._model
+        self._optimizer = tf.keras.optimizers.RMSprop(0.0005)
 
     def _agent_model(self):
         """Returns the models which evaluate prob logits and action values 
@@ -674,24 +647,22 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
         -------
         model_logits : TensorFlow Graph
             A2C model graph for action logits
-        model_values : TensorFlow Graph
-            A2C model graph for action values
+        model_full : TensorFlow Graph
+            A2C model complete graph
         """
         input_board = Input((self._board_size, self._board_size, self._n_frames,))
-        x = Conv2D(4, (2,2), activation='relu', data_format='channels_last')(input_board)
-        x = Conv2D(8, (2,2), activation='relu', data_format='channels_last')(x)
+        x = Conv2D(16, (3,3), activation='relu', data_format='channels_last')(input_board)
+        x = Conv2D(32, (3,3), activation='relu', data_format='channels_last')(x)
         x = Flatten()(x)
-        x = Dense(16, activation='relu', name='dense')(x)
+        x = Dense(64, activation='relu', name='dense')(x)
         action_logits = Dense(self._n_actions, activation='linear', name='action_logits')(x)
-        action_values = Dense(1, activation='linear', name='action_values')(x)
+        state_values = Dense(1, activation='linear', name='state_values')(x)
 
         model_logits = Model(inputs=input_board, outputs=action_logits)
-        model_values = Model(inputs=input_board, outputs=action_values)
-        # do not compile the actor model here, the loss for that is separately
-        # calculated, compile critic model here as the loss is just mse
-        model_values.compile(optimizer=RMSprop(0.0005), loss='mean_squared_error')
+        model_full = Model(inputs=input_board, outputs=[action_logits, state_values])
+        # updates are calculated in the train_agent function
 
-        return model_logits, model_values
+        return model_logits, model_full
 
     def train_agent(self, batch_size=32, beta=0.001, normalize_rewards=False,
                     num_games=1, reward_clip=False):
@@ -716,10 +687,12 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
         Returns
         -------
         error : list
-            The current loss (actor loss, critic loss)
+            The current loss (total loss, actor loss, critic loss)
         """
         # in policy gradient, only one complete episode is used for training
-        s, a, r, next_s, done = self._buffer.sample(self._buffer.get_current_size())
+        s, a, r, next_s, done, _ = self._buffer.sample(self._buffer.get_current_size())
+        s_prepared = self._prepare_input(s)
+        next_s_prepared = self._prepare_input(next_s)
         # unlike DQN, the discounted reward is not estimated
         # we have defined custom actor and critic losses functions above
         # use that to train to agent model
@@ -732,17 +705,37 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
             else:
                 r = (r - np.mean(r))/np.std(r)
 
-        model = self._action_values_model
+        if(reward_clip):
+            r = np.sign(r)
+
+        model = self._full_model
+        next_s_pred = self._model.predict_on_batch(next_s_prepared)
+        s_pred = self._model.predict_on_batch(s_prepared)
+        
+        # prepare target
+        future_reward = self._gamma * next_s_pred * (1-done)
         # calculate target for actor (uses advantage), similar to Policy Gradient
-        actor_target = a * (r + self._gamma * self._get_model_outputs(next_s, model=model) * (1 - done) - self._get_model_outputs(s, model=model))
-        actor_loss = self._actor_update([self._prepare_input(s), actor_target, beta, num_games])
+        advantage = a * (r + future_reward - s_pred)
 
-        # calculate target for critic, similar to DQN
-        critic_target = (r + self._gamma * self._get_model_outputs(next_s, model=model)) * (1 - done)
-        critic_target = a * critic_target + (1 - a) * self._get_model_outputs(s, model=model)
-        critic_loss = self._action_values_model.train_on_batch(self._prepare_input(s), critic_target)
+        # calculate target for critic, simply current reward + future expected reward
+        critic_target = r + future_reward
 
-        loss = actor_loss + [critic_loss]
+        with tf.GradientTape() as tape:
+            model_out = model(s_prepared)
+            policy = tf.nn.softmax(model_out[0])
+            log_policy = tf.nn.log_softmax(model_out[0])
+            # calculate loss
+            J = tf.reduce_sum(tf.multiply(advantage, log_policy))/num_games
+            entropy = -tf.reduce_sum(tf.multiply(policy, log_policy))/num_games
+            actor_loss = -J - beta*entropy
+            critic_loss = mean_huber_loss(critic_target, model_out[1])
+            loss = actor_loss + critic_loss
+        # get the gradients
+        grads = tape.gradient(loss, model.trainable_weights)
+        # run the optimizer
+        self._optimizer.apply_gradients(zip(grads, model.trainable_variables))
+
+        loss = [loss.numpy(), actor_loss.numpy(), critic_loss.numpy()]
         return loss[0] if len(loss)==1 else loss
 
 class HamiltonianCycleAgent(Agent):
@@ -853,7 +846,7 @@ class HamiltonianCycleAgent(Agent):
             self._cycle[index] = sp
             index += 1
 
-    def move(self, board, values):
+    def move(self, board, legal_moves, values):
         """ get the action using agent policy """
         cy_len = (self._board_size-2)**2
         curr_head = np.sum(self._board_grid * \
@@ -945,7 +938,7 @@ class SupervisedLearningAgent(DeepQLearningAgent):
         # instead of the reward value
         self._model_action_out = Softmax()(self._model.get_layer('action_values').output)
         self._model_action = Model(inputs=self._model.get_layer('input').input, outputs=self._model_action_out)
-        self._model_action.compile(optimizer=RMSprop(0.005), loss='categorical_crossentropy')
+        self._model_action.compile(optimizer=RMSprop(0.001), loss='categorical_crossentropy')
         
     def train_agent(self, batch_size=32, num_games=1, epochs=5, 
                     reward_clip=False):
@@ -969,7 +962,7 @@ class SupervisedLearningAgent(DeepQLearningAgent):
             loss : float
             The current error (error metric is cross entropy)
         """
-        s, a, r, next_s, done = self._buffer.sample(self.get_buffer_size())
+        s, a, _, _, _, _ = self._buffer.sample(self.get_buffer_size())
         # fit using the actions as assumed to be best
         history = self._model_action.fit(self._normalize_board(s), a, epochs=epochs)
         loss = round(history.history['loss'][-1], 5)
@@ -988,7 +981,7 @@ class SupervisedLearningAgent(DeepQLearningAgent):
         max_value : int
             The maximum output produced by the network (_model)
         """
-        s, _, _, _, _ = self._buffer.sample(self.get_buffer_size())
+        s, _, _, _, _, _ = self._buffer.sample(self.get_buffer_size())
         max_value = np.max(self._model.predict(self._normalize_board(s)))
         return max_value
 
@@ -1089,35 +1082,42 @@ class BreadthFirstSearchAgent(Agent):
                     break
         return path
 
-    def move(self, board, values):
-        path = self._get_shortest_path(board, values)
-        if(len(path) == 0):
-            return 1
-        next_head = path[-2]
-        curr_head = (self._board_grid * (board[:,:,0] == values['head'])).sum()
-        # get prev head position
-        if(((board[:,:,0] == values['head']) + (board[:,:,0] == values['snake']) \
-            == (board[:,:,1] == values['head']) + (board[:,:,1] == values['snake'])).all()):
-            # we are at the first frame, snake position is unchanged
-            prev_head = curr_head - 1
-        else:
-            # we are moving
-            prev_head = (self._board_grid * (board[:,:,1] == values['head'])).sum()
-        curr_head_row, curr_head_col = self._point_to_row_col(curr_head)
-        prev_head_row, prev_head_col = self._point_to_row_col(prev_head)
-        next_head_row, next_head_col = self._point_to_row_col(next_head)
-        dx, dy = next_head_col - curr_head_col, -next_head_row + curr_head_row
-        if(dx == 1 and dy == 0):
-            return 0
-        elif(dx == 0 and dy == 1):
-            return 1
-        elif(dx == -1 and dy == 0):
-            return 2
-        elif(dx == 0 and dy == -1):
-            return 3
-        else:
-            return -1
-            
+    def move(self, board, legal_moves, values):
+        if(board.ndim == 3):
+            board = board.reshape((1,) + board.shape)
+        board_main = board.copy()
+        a = np.zeros((board.shape[0],), dtype=np.uint8)
+        for i in range(board.shape[0]):
+            board = board_main[i,:,:,:]
+            path = self._get_shortest_path(board, values)
+            if(len(path) == 0):
+                a[i] = 1
+                continue
+            next_head = path[-2]
+            curr_head = (self._board_grid * (board[:,:,0] == values['head'])).sum()
+            # get prev head position
+            if(((board[:,:,0] == values['head']) + (board[:,:,0] == values['snake']) \
+                == (board[:,:,1] == values['head']) + (board[:,:,1] == values['snake'])).all()):
+                # we are at the first frame, snake position is unchanged
+                prev_head = curr_head - 1
+            else:
+                # we are moving
+                prev_head = (self._board_grid * (board[:,:,1] == values['head'])).sum()
+            curr_head_row, curr_head_col = self._point_to_row_col(curr_head)
+            prev_head_row, prev_head_col = self._point_to_row_col(prev_head)
+            next_head_row, next_head_col = self._point_to_row_col(next_head)
+            dx, dy = next_head_col - curr_head_col, -next_head_row + curr_head_row
+            if(dx == 1 and dy == 0):
+                a[i] = 0
+            elif(dx == 0 and dy == 1):
+                a[i] = 1
+            elif(dx == -1 and dy == 0):
+                a[i] = 2
+            elif(dx == 0 and dy == -1):
+                a[i] = 3
+            else:
+                a[i] = 0
+        return a
         """
         d1 = (curr_head_row - prev_head_row, curr_head_col - prev_head_col)
         d2 = (next_head_row - curr_head_row, next_head_col - curr_head_col)

@@ -189,7 +189,8 @@ def play_game2(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
     # this done is just for first run of the while loop
     done = np.zeros((1,), dtype=np.uint8)
     # the following is useful for discounted rewards as not known in advance
-    s_list, action_list, reward_list, next_s_list, done_list = [], [], [], [], []
+    s_list, action_list, reward_list, next_s_list, done_list, legal_moves_list \
+                = [], [], [], [], [], []
     frames, games = 0, 0
 
     '''3 conditions to check, 
@@ -202,25 +203,32 @@ def play_game2(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
     while(not frame_mode and not done.all()) or \
          (frame_mode and total_games is None and frames < total_frames) or\
          (frame_mode and total_games is not None and games < total_games):
+        legal_moves = env.get_legal_moves()
         if(np.random.random() <= epsilon):
             # use epsilon greedy policy to get next action
-            action = np.random.choice(n_actions, n_games)
+            # action = np.random.choice(n_actions, n_games)
+            action = np.argmax(np.where(legal_moves>0, 
+                        np.random.random((n_games, n_actions)),-1), axis=1)
         else:
             # else select action using agent outputs
             if(sample_actions):
                 # sample from prob dist
                 probs = agent.get_action_proba(s)
-                action = np.random.choice(n_actions, p=probs)
+                # direct np.random.choice cannot be used on matrix
+                # so we get cumsum and the generate random nos to select an "interval"
+                # through which we can pick the action to be selected
+                action = (probs.cumsum(axis=1)<np.random.random((probs.shape[0],1))).sum(axis=1)
             else:
                 # get action with best q value
-                action = agent.move(s, env.get_values())
+                action = agent.move(s, legal_moves, env.get_values())
         # take 1 step in env across all games 
-        next_s, reward, done, info = env.step(action)
+        next_s, reward, done, info, next_legal_moves = env.step(action)
 
         if(record):
             # handle (info['termination_reason'] != 'time_up') later
             if(reward_type == 'current'):
-                agent.add_to_buffer(s, action, reward, next_s, done)
+                agent.add_to_buffer(s, action, reward, next_s, done, 
+                                    next_legal_moves)
             elif(reward_type == 'discounted_future'):
                 # add everything later to the buffer
                 s_list.append(s.copy())
@@ -228,6 +236,7 @@ def play_game2(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
                 reward_list.append(reward)
                 next_s_list.append(next_s.copy())
                 done_list.append(done)
+                legal_moves_list.append(next_legal_moves)
             else:
                 assert reward_type in ['current', 'discounted_future'], \
                         'reward type not understood !'
@@ -237,12 +246,13 @@ def play_game2(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
         games += done.sum()
         # get only lengths where game ended
         lengths += np.dot(done, info['length'])
+
     # if using future discounted rewards, then add everything to buffer here
     if(record and reward_type == 'discounted_future'):
         reward_list = calculate_discounted_rewards(reward_list, agent.get_gamma())
         for i in range(len(reward_list)):
             agent.add_to_buffer(s_list[i], action_list[i], reward_list[i],\
-                                next_s_list[i], done_list[i])
+                                next_s_list[i], done_list[i], legal_moves_list[i])
     
     # since not frame mode, calculate lenghts at the end to avoid
     # double counting 
@@ -330,14 +340,14 @@ def anim_frames_func(board_time, axs, color_map, food_count, qvalues):
     plt.tight_layout()
     return axs
 
-def plot_from_logs(data, title="Rewards and Loss Curve for Agent",
+def plot_logs(data, title="Rewards and Loss Curve for Agent",
                     loss_titles=['Loss']):
     '''
     utility function to plot the learning curves
     loss_index is only applicable if the object is a
     example usage:
-    plot_from_logs('model_logs/v12.csv', loss_titles=['Total Loss', 'Policy Gradient Loss', 'Entropy'])
-    plot_from_logs('model_logs/v11.csv')
+    python -c "from utils import plot_logs; plot_logs('model_logs/v15.2.csv')"
+    python -c "from utils import plot_logs; plot_logs('model_logs/v15.3.csv', loss_titles=['Total Loss', 'Actor Loss', 'Critic Loss'])"
     '''
     loss_count = 1
     if(isinstance(data, str)):
@@ -355,13 +365,21 @@ def plot_from_logs(data, title="Rewards and Loss Curve for Agent",
         pass
     else:
         print('Provide a dictionary or file path for the data')
-    fig, axs = plt.subplots(1 + loss_count, 1, figsize=(8, 8))
-    axs[0].plot(data['iteration'], data['reward_mean'])
-    axs[0].set_ylabel('Mean Reward')
+    fig, axs = plt.subplots(1 + loss_count + 1 if 'length_mean' in data.columns else 0, 1, figsize=(8, 8))
     axs[0].set_title(title)
-    for i in range(loss_count):
-        axs[i+1].plot(data['iteration'], data['loss_{:d}'.format(i) if loss_count > 1 else 'loss'])
-        axs[i+1].set_ylabel(loss_titles[i])
-        axs[i+1].set_xlabel('Iteration')
+    index = 0
+    if('length_mean' in data.columns):
+        axs[0].plot(data['iteration'], data['length_mean'])
+        axs[0].set_ylabel('Mean Length')
+        index = 1        
+    
+    axs[index].plot(data['iteration'], data['reward_mean'])
+    axs[index].set_ylabel('Mean Reward')
+    index += 1
+
+    for i in range(index, index+loss_count):
+        axs[i].plot(data['iteration'], data['loss_{:d}'.format(i-index) if loss_count > 1 else 'loss'])
+        axs[i].set_ylabel(loss_titles[i-index])
+        axs[i].set_xlabel('Iteration')
     plt.tight_layout()
     plt.show()

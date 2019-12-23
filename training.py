@@ -3,7 +3,7 @@ script for training the agent for snake using various methods
 '''
 # run on cpu
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 import numpy as np
 from tqdm import tqdm
@@ -13,21 +13,27 @@ import time
 from utils import play_game, play_game2
 from game_environment import Snake, SnakeNumpy
 import tensorflow as tf
-from agent import DeepQLearningAgent, PolicyGradientAgent, AdvantageActorCriticAgent
+from agent import DeepQLearningAgent, PolicyGradientAgent,\
+                AdvantageActorCriticAgent, mean_huber_loss
 
 # some global variables
 tf.random.set_seed(42)
 board_size = 10
 frames = 2 # keep frames >= 2
-version = 'v15'
+version = 'v15.3'
 max_time_limit = 998 # 998
 supervised = False
 n_actions = 4
 
+# define no of episodes, logging frequency
+episodes = 1 * (10**4)
+log_frequency = 500
+games_eval = 8
+
 # setup the agent
-agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=40000)
+# agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=60000)
 # agent = PolicyGradientAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=2000)
-# agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=2000)
+agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=2000)
 # agent.print_models()
 
 # check in the same order as class hierarchy
@@ -45,17 +51,14 @@ if(agent_type in ['DeepQLearningAgent']):
     epsilon, epsilon_end = 1, 0.01
     reward_type = 'current'
     sample_actions = False
-    n_games_training = 8
+    n_games_training = 8*16
     decay = 0.97
     if(supervised):
         # lower the epsilon since some starting policy has already been trained
         epsilon = 0.6
         # load the existing model from a supervised method
         # or some other pretrained model
-        try:
-            agent.load_model(file_path='models/{:s}'.format(version))
-        except FileNotFoundError:
-            pass
+        agent.load_model(file_path='models/{:s}'.format(version))
 if(agent_type in ['PolicyGradientAgent']):
     epsilon, epsilon_end = -1, -1
     reward_type = 'discounted_future'
@@ -71,10 +74,6 @@ if(agent_type in ['AdvantageActorCriticAgent']):
     n_games_training = 8
     decay = 1
 
-# define no of episodes, logging frequency
-episodes = 5 * (10**4)
-log_frequency = 500
-games_eval = 8
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
 
 # use only for DeepQLearningAgent
@@ -99,7 +98,7 @@ if(agent_type in ['DeepQLearningAgent']):
         print('Playing {:d} frames took {:.2f}s'.format(games*64, time.time()-ct))
 
 env = SnakeNumpy(board_size=board_size, frames=frames, 
-            max_time_limit=max_time_limit, games=n_games_training*32,
+            max_time_limit=max_time_limit, games=n_games_training,
             frame_mode=True)
 env2 = SnakeNumpy(board_size=board_size, frames=frames, 
             max_time_limit=max_time_limit, games=games_eval,
@@ -109,13 +108,24 @@ env2 = SnakeNumpy(board_size=board_size, frames=frames,
 model_logs = {'iteration':[], 'reward_mean':[],
               'length_mean':[], 'games':[], 'loss':[]}
 for index in tqdm(range(episodes)):
-    # make small changes to the buffer and slowly train
-    _, _, _ = play_game2(env, agent, n_actions, epsilon=epsilon,
-                   n_games=n_games_training*32, record=True,
-                   sample_actions=sample_actions, reward_type=reward_type,
-                   frame_mode=True, total_frames=n_games_training*32, 
-                   stateful=True)
-    loss = agent.train_agent(batch_size=32, num_games=n_games_training, reward_clip=True)
+    if(agent_type in ['DeepQLearningAgent']):
+        # make small changes to the buffer and slowly train
+        _, _, _ = play_game2(env, agent, n_actions, epsilon=epsilon,
+                       n_games=n_games_training, record=True,
+                       sample_actions=sample_actions, reward_type=reward_type,
+                       frame_mode=True, total_frames=n_games_training, 
+                       stateful=True)
+        loss = agent.train_agent(batch_size=64,
+                                 num_games=n_games_training, reward_clip=True)
+
+    if(agent_type in ['AdvantageActorCriticAgent']):
+        # play a couple of games and train on all
+        _, _, _ = play_game2(env, agent, n_actions, epsilon=epsilon,
+                       n_games=n_games_training, record=True,
+                       sample_actions=sample_actions, reward_type=reward_type,
+                       frame_mode=True, total_games=n_games_training)
+        loss = agent.train_agent(batch_size=agent.get_buffer_size(), 
+                                 num_games=n_games_training, reward_clip=True)
 
     if(agent_type in ['PolicyGradientAgent', 'AdvantageActorCriticAgent']):
         # for policy gradient algorithm, we only take current episodes for training
@@ -123,7 +133,6 @@ for index in tqdm(range(episodes)):
 
     # check performance every once in a while
     if((index+1)%log_frequency == 0):
-        model_logs['loss'].append(round(loss, 6))
         # keep track of agent rewards_history
         current_rewards, current_lengths, current_games = \
                     play_game2(env2, agent, n_actions, n_games=games_eval, epsilon=-1,
@@ -135,6 +144,7 @@ for index in tqdm(range(episodes)):
         # model_logs['reward_dev'].append(round(np.std(current_rewards), 2))
         model_logs['length_mean'].append(round(int(current_lengths)/current_games, 2))
         model_logs['games'].append(current_games)
+        model_logs['loss'].append(loss)
         pd.DataFrame(model_logs)[['iteration', 'reward_mean', 'length_mean', 'games', 'loss']]\
           .to_csv('model_logs/{:s}.csv'.format(version), index=False)
 

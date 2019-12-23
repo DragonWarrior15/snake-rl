@@ -144,6 +144,9 @@ class ReplayBufferNumpy:
         buffer size * 1
     _r : Numpy array
         Buffer to store the rewards, buffer size * 1
+    _legal_moves : Numpy array
+        Buffer to store the legal moves in the next state, useful
+        when calculating the max of Q values in next state
     _buffer_size : int
         Maximum size of the buffer
     _current_buffer_size : int
@@ -168,17 +171,19 @@ class ReplayBufferNumpy:
         actions : int, optional
             Number of actions available in env
         """
-        self._s = np.zeros((buffer_size, board_size, board_size, frames), dtype=np.uint8)
-        self._next_s = self._s.copy()
-        self._a = np.zeros((buffer_size,), dtype=np.uint8)
-        self._done = self._a.copy()
-        self._r = np.zeros((buffer_size,), dtype=np.int16)
         self._buffer_size = buffer_size
         self._current_buffer_size = 0
         self._pos = 0
         self._n_actions = actions
 
-    def add_to_buffer(self, s, a, r, next_s, done):
+        self._s = np.zeros((buffer_size, board_size, board_size, frames), dtype=np.uint8)
+        self._next_s = self._s.copy()
+        self._a = np.zeros((buffer_size,), dtype=np.uint8)
+        self._done = self._a.copy()
+        self._r = np.zeros((buffer_size,), dtype=np.int16)
+        self._legal_moves = np.zeros((buffer_size, self._n_actions), dtype=np.uint8)
+
+    def add_to_buffer(self, s, a, r, next_s, done, legal_moves):
         """Add data to the buffer, multiple examples can be added at once
         
         Parameters
@@ -194,6 +199,8 @@ class ReplayBufferNumpy:
             should be a single state
         done : int
             Binary indicator for game termination
+        legal_moves : Numpy array
+            Binary indicator for legal moves in the next state
         """
         if(s.ndim == 3):
             # single board is supplied
@@ -208,6 +215,7 @@ class ReplayBufferNumpy:
         self._r[idx] = r
         self._next_s[idx] = next_s
         self._done[idx] = done
+        self._legal_moves[idx] = legal_moves
         # % is to wrap over the buffer
         self._pos = (self._pos+l)%self._buffer_size
         # update the buffer size
@@ -251,6 +259,8 @@ class ReplayBufferNumpy:
             The state matrix for input, size * board size * board size * frame count
         done : Numpy array
             Binary indicators for game termination, size * 1
+        legal_moves : Numpy array
+            Binary indicators for legal moves in the next state, size * num actions
         """
         size = min(size, self._current_buffer_size)
         # select random indexes indicating which examples to sample
@@ -264,5 +274,6 @@ class ReplayBufferNumpy:
         r = self._r[idx].reshape((-1, 1))
         next_s = self._next_s[idx]
         done = self._done[idx].reshape(-1, 1)
+        legal_moves = self._legal_moves[idx]
 
-        return s, a, r, next_s, done
+        return s, a, r, next_s, done, legal_moves

@@ -52,7 +52,32 @@ class Position:
             self.col = col
 
 class Snake:
-    """Class for the snake game
+    """Class for the snake game. Call the reset function to get the first
+    state of the environment after initialization.
+
+    Note : the game is playable even if it has terminated. Although,
+    any action provided will have no effect whatsoever on the env. Separate
+    logic must be returned to run the env only till variable done stays 0.
+    done is returned by the step function.
+    
+    Code flow
+    init with parameters
+            v
+    reset (same env can be reset multiple times)
+            v
+    action input by agent/user to the step function
+            v
+    step function checks if the game is terminated due to action
+    or can continue as is or if food has been eaten, and accordingly
+    sets the values of done and reward variables
+            v
+    step function calls the move snake function which does the actual
+    movement and updated both the snake and board queues
+            v
+    step function calls the get food function in case current food
+    has been eaten by the snake
+            v
+    next state, reward, done and info variables are returned 
 
     Attributes
     ----------
@@ -71,21 +96,53 @@ class Snake:
             Values for rewards for different events
         _start_length : int
             The length of the snake when the game starts
+        _max_time_limit : int
+            The maximum time to run the game for, -1 indicates forever
+        _static_board_template : Numpy array
+            Contains all zeros except borders, set according to _value['border']
+        _snake : Deque
+            Deque containing the individual positions of the snake body.
+            For movement, last value is simply popped and appended to the left
+            of the queue. When increasing length, new position is appended 
+            to the left of the queue
+        _snake_length : int
+            Keeps track of the length of the snake, updated when food is eaten
+        _snake_head : Position
+            Keeps track of the head of the snake (row and col)
+        _board : Deque
+            Keeps track of individual frames in a game state. During update,
+            new frame is appended to the left. Queue length is always fixed
+        _snake_direction : int
+            Keeps track of in which direction is the snake moving. This is
+            necessary to correctly update the snake position given an action
+        _time : int
+            Keeps track of time elapsed (in steps) since game started
+
         board : numpy array containing information about various objects in the
                 board, including snake, food and obstacles
-        snake_length (int) : current length of the snake
-        snake_head (int, int) : Position containing the row and column no of board
-                                for snake head
-        food (int, int) : Position containing the coordinates for the food
-        snake_direction (int) : direction (left:2, right:0, up:1, down:3) where
-                                   snake is moving
-        snake (queue) : a queue to store the positions of the snake body
+        
     """
     def __init__(self, board_size=10, frames=2, start_length=5, seed=42,
                  max_time_limit=298):
-        '''
-        Initialization function for the environment.
-        '''
+        """Initializer for the snake class. Some of the attributes are
+        initialized here while the remaining are done in the reset function
+        depending on which need to be refreshed every time game restarts
+
+        Parameters
+        ----------
+        board_size : int, optional
+            The board size of the environment (env is square)
+        frames : int, optional
+            Total historic "images" kept in the state
+        start_length : int, optional
+            The starting length of the snake (constrained below to be less
+            than half the size of board)
+        seed : int, optional
+            Seed value to set (Not used here for randomness)
+        max_time_limit : int, optional
+            Maximum steps for the env to run (-1 indicates no bound)
+        """
+        
         # self._value = {'snake':255, 'board':0, 'food':128, 'head':180, 'border':80}
         self._value = {'snake':1, 'board':0, 'food':3, 'head':2, 'border':4}
         # self._actions = [-1, 0, 1] # -1 left, 0 nothing, 1 right
@@ -98,7 +155,7 @@ class Snake:
         self._start_length = min(start_length, (board_size-2)//2)
         # set numpy seed for reproducible results
         # np.random.seed(seed)
-        # time limit to contain length of game, -1 means runu till end
+        # time limit to contain length of game, -1 means run till end
         self._max_time_limit = max_time_limit
         # other variables that can be quickly reused across multiple games
         self._static_board_template = self._value['board'] * np.ones((self._board_size, self._board_size))
@@ -107,48 +164,17 @@ class Snake:
         self._static_board_template[:, self._board_size-1] = self._value['border']
         self._static_board_template[0, :] = self._value['border']
         self._static_board_template[self._board_size-1, :] = self._value['border']
-        # variable to hold all positions where food can be put
-
-    def _queue_to_board(self):
-        '''
-        Convert the current queue of frames to a 3D matrix
-        Returns:
-            board : np array of 3 dimensions
-        '''
-        board = np.dstack([x for x in self._board])
-        return board.copy()
-
-    def print_game(self):
-        ''' prints the current state (board) '''
-        fig, axs = plt.subplots(1, self._n_frames)
-        if(self._n_frames == 1):
-            axs.imshow(self._board[0], cmap = 'gray')
-        else:
-            for i in range(self._n_frames):
-                axs[i].imshow(self._board[i], cmap = 'gray')
-        plt.show()
-
-    def get_board_size(self):
-        ''' get board_size '''
-        return self._board_size
-
-    def get_n_frames(self):
-        ''' get frame count '''
-        return self._n_frames
-
-    def get_head_value(self):
-        ''' get color of head '''
-        return self._value['head']
-
-    def get_values(self):
-        return self._value
 
     def reset(self):
-        '''
-        reset the environment
-        Returns:
-            board : the current board state
-        '''
+        """Resets the environment to the starting state. Snake is kept same
+        but food is randomly initialzed. Board and snake queues are initialized
+        here.
+        
+        Returns
+        -------
+        board : Numpy array
+            Starting game state
+        """
         board = self._static_board_template.copy()
         # initialize snake
         self._snake = deque()
@@ -174,33 +200,35 @@ class Snake:
         self._time = 0
         return self._queue_to_board()
 
-    def get_num_actions(self):
-        ''' get total count of actions '''
-        return self._n_actions
+    def _queue_to_board(self):
+        """Convert the current queue of frames to a 3D matrix
+        of shape board size * board size * frame count
 
-    def _action_map(self, action):
-        ''' converts integer to internal action mapping '''
-        return self._actions[action]
-
-    def _get_snake_tail(self):
-        '''
-        get the head of the snake, right most element in the queue
-        Returns:
-        head : Position of the head
-        '''
-        return self._snake[0]
+        Returns
+        -------
+        board : Numpy array
+            Current environment state
+        """        
+        board = np.dstack([x for x in self._board])
+        return board.copy()
 
     def _get_food(self):
-        '''
-        find the coordinates of the point to put the food at
+        """Find the coordinates of the point to put the food at
         first randomly locate a row to put the food in, then remove all
-        the cells with snake and choose amongst the remaining
-        since board has borders, food cannot be at them
-        '''
-        # create a random ordering for x
+        the cells with snake, head and borders to choose among the 
+        remaining
+        """
+        # create a random ordering for row
         ord_x = list(range(1,self._board_size-1))
         np.random.shuffle(ord_x)
         found = False
+        '''
+        iterate over rows in the shuffled order
+        and search for available y positions
+        if no y position is available, move to the next row
+        if no x is valid, food position is not set and game must
+        have terminated
+        '''
         for x in ord_x:
             food_y = [i for i in range(1, self._board_size-1) \
                         if self._board[0][x, i] == self._value['board']]
@@ -213,9 +241,58 @@ class Snake:
                 found = True
                 break
 
+    def print_game(self):
+        """Prints the current state (board) as a plot"""
+        fig, axs = plt.subplots(1, self._n_frames)
+        if(self._n_frames == 1):
+            axs.imshow(self._board[0], cmap = 'gray')
+        else:
+            for i in range(self._n_frames):
+                axs[i].imshow(self._board[i], cmap = 'gray')
+        plt.show()
+
+    def get_board_size(self):
+        """Gets board size"""
+        return self._board_size
+
+    def get_n_frames(self):
+        """Gets frame count"""
+        return self._n_frames
+
+    def get_values(self):
+        """Gets dictionary containing values for different
+        board parts (snake, head, food, border)
+        """
+        return self._value
+
+    def get_num_actions(self):
+        """Gets total count of actions in environment"""
+        return self._n_actions
+
+    def _action_map(self, action):
+        """Converts action integer to internal action value using 
+        action mapping
+
+        Returns
+        -------
+        action : int
+            Action converted to environment action representation
+        """
+        return self._actions[action]
+
+    def _get_snake_tail(self):
+        """Gets the head of the snake which is the left most element 
+        in the queue
+        
+        Returns
+        -------
+        head : Position
+            (row, col) value for the snake head
+        """
+        return self._snake[0]
 
     def _put_food(self):
-        ''' put the food in the required spot '''
+        """Put food in the required spot in the left most (latest) frame"""
         self._board[0][self._food.row, self._food.col] = self._value['food']
 
     def _get_new_direction(self, action, current_direction):
@@ -405,8 +482,8 @@ class SnakeNumpy:
         self._n_games = games
         self._rewards = {'out':-1, 'food':1, 'time':0, 'no_food':0}
         # start length is constrained to be less than half of board size
-        self._start_length = min(start_length, (board_size-2)//2)
-        # self._start_length = 2 # fix for random positioning
+        # self._start_length = min(start_length, (board_size-2)//2)
+        self._start_length = 2 # fix for random positioning
         # set numpy seed for reproducible results
         # np.random.seed(seed)
         # time limit to contain length of game, -1 means run till end
@@ -458,17 +535,41 @@ class SnakeNumpy:
             self._seq[i] = seq.copy().reshape((1,self._board_size,self._board_size))
 
     def _random_snake(self):
-        ''' random templates for snake spawn '''
+        ''' templates for snake spawn '''
         strides = self._board_size - 2 - self._start_length + 1
-        self._body_random = np.zeros((strides * (self._board_size-2), 
+        total_boards = strides * (self._board_size-2) * 4
+        self._body_random = np.zeros((total_boards,
                                       self._board_size, self._board_size), 
                                       dtype=np.uint16)
         self._head_random = self._body_random.copy()
+        self._direction_random = np.zeros((total_boards,), dtype=np.uint8)
+        # snake pointing towards right)
         for i in range(strides):
             idx1 = np.arange(0+i*(self._board_size-2),0+(i+1)*(self._board_size-2), dtype=np.uint8)
             idx2 = np.arange(1,self._board_size-1, dtype=np.uint8)
             self._body_random[idx1,idx2,i+1:i+1+self._start_length-1] = (np.arange(self._start_length-1, dtype=np.uint16)+1)
             self._head_random[idx1,idx2,i+1+self._start_length-1] = 1
+
+        # mirror image (snake pointing towards left)
+        idx1 = np.arange(total_boards//4, (total_boards//4)*2)
+        idx2 = np.arange(total_boards//4)
+        self._body_random[idx1,:,::-1] = self._body_random[idx2,:,:].copy()
+        self._head_random[idx1,:,::-1] = self._head_random[idx2,:,:].copy()
+        self._direction_random[idx1] = 2
+        
+        # snake pointing down
+        idx1 = np.arange(total_boards//4, (total_boards//4)*2)
+        for i in idx1:
+            self._body_random[i+(total_boards//4),:,:] = self._body_random[i,::-1,:].copy().T
+            self._head_random[i+(total_boards//4),:,:] = self._head_random[i,::-1,:].copy().T
+        self._direction_random[idx1 + (total_boards//4)] = 3
+
+        # snake pointing up (mirror image of above)
+        idx1 = np.arange((total_boards//4)*3, (total_boards//4)*4)
+        idx2 = np.arange((total_boards//4)*2, (total_boards//4)*3)
+        self._body_random[idx1,::-1,:] = self._body_random[idx2,:,:].copy()
+        self._head_random[idx1,::-1,:] = self._head_random[idx2,:,:].copy()
+        self._direction_random[idx1] = 1
 
     def _calculate_board(self):
         ''' combine all elements together to get the board '''
@@ -560,13 +661,14 @@ class SnakeNumpy:
         # initialize snake, head takes the value 1 always
         self._food = np.zeros((self._n_games, self._board_size, self._board_size), dtype=np.uint8)
         random_indices = np.random.choice(np.arange(self._body_random.shape[0]), self._n_games)
-        # random_indices = np.zeros((self._n_games), dtype=np.uint8)
-        self._body, self._head = self._body_random[random_indices].copy(),\
-                                    self._head_random[random_indices].copy()
+        # random_indices = np.ones((self._n_games), dtype=np.uint8) * ((self._board_size-2)//2)
+        self._body, self._head, self._snake_direction = \
+                                self._body_random[random_indices].copy(),\
+                                self._head_random[random_indices].copy(),\
+                                self._direction_random[random_indices].copy()
 
         self._snake_length = self._start_length * np.ones((self._n_games), dtype=np.uint16)
         self._count_food = np.zeros((self._n_games), dtype=np.uint16)
-        self._snake_direction = np.zeros((self._n_games,), dtype=np.uint8)
         # first view of the board
         board = self._calculate_board()
         # initialize the queue
@@ -593,12 +695,13 @@ class SnakeNumpy:
         self._food[f] = np.zeros((fsum, self._board_size,self._board_size),
                                  dtype=np.uint8)
         random_indices = np.random.choice(np.arange(self._body_random.shape[0]), fsum)
-        # random_indices = np.zeros((fsum), dtype=np.uint8)
-        self._body[f], self._head[f] = self._body_random[random_indices].copy(),\
-                                    self._head_random[random_indices].copy()
+        # random_indices = np.ones((fsum), dtype=np.uint8) * ((self._board_size-2)//2)
+        self._body[f], self._head[f], self._snake_direction[f] = \
+                        self._body_random[random_indices].copy(),\
+                        self._head_random[random_indices].copy(),\
+                        self._direction_random[random_indices].copy()
 
         # assign the body
-        self._snake_direction[f] = 0
         self._snake_length[f] = self._start_length
         self._time[f] = 0
         self._done[f] = 0
@@ -711,17 +814,19 @@ class SnakeNumpy:
         done_copy = self._done.copy()
         if(self._frame_mode):
             self._soft_reset()
-        return self._queue_to_board(), reward.copy(), done_copy.copy(), info
+        next_legal_moves = self.get_legal_moves()
+        return self._queue_to_board(), reward.copy(), done_copy.copy(),\
+                info, next_legal_moves.copy()
 
     def _get_food_reward(self, f):
         ''' try different rewards schemes for when food is eaten '''
-        return((self._snake_length[f] - self._start_length + 1) * self._rewards['food'])
-        # return self._rewards['food']
+        # return((self._snake_length[f] - self._start_length + 1) * self._rewards['food'])
+        return self._rewards['food']
 
     def _get_death_reward(self, f):
         ''' try different rewards schemes for death '''
-        return (self._snake_length[f] - self._start_length+1)*self._rewards['out']
-        # return self._rewards['out']
+        # return (self._snake_length[f] - self._start_length+1)*self._rewards['out']
+        return self._rewards['out']
 
     def _check_if_done(self, action):
         '''
