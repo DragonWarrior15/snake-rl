@@ -631,12 +631,11 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
         Custom function to prepare the 
     """
     def __init__(self, board_size=10, frames=4, buffer_size=10000,
-                 gamma = 0.99, n_actions=3, use_target_net=False):
+                 gamma = 0.99, n_actions=3, use_target_net=True):
         DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames,
                                 buffer_size=buffer_size, gamma=gamma,
-                                n_actions=n_actions, use_target_net=False)
-        self._model, self._full_model = self._model
-        self._optimizer = tf.keras.optimizers.RMSprop(0.0005)
+                                n_actions=n_actions, use_target_net=use_target_net)
+        self._optimizer = tf.keras.optimizers.RMSprop(5e-4)
 
     def _agent_model(self):
         """Returns the models which evaluate prob logits and action values 
@@ -660,9 +659,76 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
 
         model_logits = Model(inputs=input_board, outputs=action_logits)
         model_full = Model(inputs=input_board, outputs=[action_logits, state_values])
+        model_values = Model(inputs=input_board, outputs=state_values)
         # updates are calculated in the train_agent function
 
-        return model_logits, model_full
+        return model_logits, model_full, model_values
+
+    def reset_models(self):
+        """ Reset all the models by creating new graphs"""
+        self._model, self._full_model, self._values_model = self._agent_model()
+        if(self._use_target_net):
+            _, _, self._target_net = self._agent_model()
+            self.update_target_net()
+
+    def save_model(self, file_path='', iteration=None):
+        """Save the current models to disk using tensorflow's
+        inbuilt save model function (saves in h5 format)
+        saving weights instead of model as cannot load compiled
+        model with any kind of custom object (loss or metric)
+        
+        Parameters
+        ----------
+        file_path : str, optional
+            Path where to save the file
+        iteration : int, optional
+            Iteration number to tag the file name with, if None, iteration is 0
+        """
+        if(iteration is not None):
+            assert isinstance(iteration, int), "iteration should be an integer"
+        else:
+            iteration = 0
+        self._model.save_weights("{}/model_{:04d}.h5".format(file_path, iteration))
+        self._full_model.save_weights("{}/model_{:04d}_full.h5".format(file_path, iteration))
+        if(self._use_target_net):
+            self._values_model.save_weights("{}/model_{:04d}_values.h5".format(file_path, iteration))
+            self._target_net.save_weights("{}/model_{:04d}_target.h5".format(file_path, iteration))
+
+    def load_model(self, file_path='', iteration=None):
+        """ load any existing models, if available """
+        """Load models from disk using tensorflow's
+        inbuilt load model function (model saved in h5 format)
+        
+        Parameters
+        ----------
+        file_path : str, optional
+            Path where to find the file
+        iteration : int, optional
+            Iteration number the file is tagged with, if None, iteration is 0
+
+        Raises
+        ------
+        FileNotFoundError
+            The file is not loaded if not found and an error message is printed,
+            this error does not affect the functioning of the program
+        """
+        if(iteration is not None):
+            assert isinstance(iteration, int), "iteration should be an integer"
+        else:
+            iteration = 0
+        self._model.load_weights("{}/model_{:04d}.h5".format(file_path, iteration))
+        self._full_model.load_weights("{}/model_{:04d}_full.h5".format(file_path, iteration))
+        if(self._use_target_net):
+            self._values_model.load_weights("{}/model_{:04d}_values.h5".format(file_path, iteration))
+            self._target_net.load_weights("{}/model_{:04d}_target.h5".format(file_path, iteration))
+
+    def update_target_net(self):
+        """Update the weights of the target network, which is kept
+        static for a few iterations to stabilize the other network.
+        This should not be updated very frequently
+        """
+        if(self._use_target_net):
+            self._target_net.set_weights(self._values_model.get_weights())
 
     def train_agent(self, batch_size=32, beta=0.001, normalize_rewards=False,
                     num_games=1, reward_clip=False):
@@ -708,9 +774,12 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
         if(reward_clip):
             r = np.sign(r)
 
-        model = self._full_model
-        next_s_pred = self._model.predict_on_batch(next_s_prepared)
-        s_pred = self._model.predict_on_batch(s_prepared)
+        # calculate V values
+        if(self._use_target_net):
+            next_s_pred = self._target_net.predict_on_batch(next_s_prepared)
+        else:
+            next_s_pred = self._values_model.predict_on_batch(next_s_prepared)
+        s_pred = self._values_model.predict_on_batch(s_prepared)
         
         # prepare target
         future_reward = self._gamma * next_s_pred * (1-done)
@@ -720,6 +789,7 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
         # calculate target for critic, simply current reward + future expected reward
         critic_target = r + future_reward
 
+        model = self._full_model
         with tf.GradientTape() as tape:
             model_out = model(s_prepared)
             policy = tf.nn.softmax(model_out[0])

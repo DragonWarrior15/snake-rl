@@ -9,9 +9,8 @@ import pandas as pd
 import sys
 
 def calculate_discounted_rewards(rewards, discount_factor=0.99):
-    '''
-    simple utility to calculate rewards discounted for
-    future values, useful in policy gradient
+    """Utility to calculate rewards discounted for
+    future values, useful in policy gradient, A2C
     
     Parameters
     ----------
@@ -25,14 +24,13 @@ def calculate_discounted_rewards(rewards, discount_factor=0.99):
     ------
     discounted rewards : list
         same size as rewads, but accounting for future discounts
-    '''
-    discounted_rewards = []
-    for i in range(len(rewards)-1, -1, -1):
-        if(i == len(rewards)-1):
-            discounted_rewards.append(rewards[i])
-        else:
-            discounted_rewards.append(discounted_rewards[-1] * discount_factor + rewards[i])
-    discounted_rewards = discounted_rewards[::-1]
+    """
+    discounted_rewards = np.zeros(rewards.shape, dtype=np.int16)
+    discounted_rewards[rewards.shape[0]-1] = rewards[rewards.shape[0]-1]
+    i = rewards.shape[0] - 2
+    while(i > -1):
+        discounted_rewards[i] = rewards[i] + discount_factor * discounted_rewards[i+1]
+        i -= 1
     return discounted_rewards.copy()
 
 def play_game(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
@@ -217,7 +215,9 @@ def play_game2(env, agent, n_actions, n_games=100, epsilon=0.01, record=True,
                 # direct np.random.choice cannot be used on matrix
                 # so we get cumsum and the generate random nos to select an "interval"
                 # through which we can pick the action to be selected
-                action = (probs.cumsum(axis=1)<np.random.random((probs.shape[0],1))).sum(axis=1)
+                action = ((probs/probs.sum(axis=1).reshape(-1,1)).cumsum(axis=1)\
+                          <np.random.random((probs.shape[0],1))).sum(axis=1)
+                action[action==4] = 3
             else:
                 # get action with best q value
                 action = agent.move(s, legal_moves, env.get_values())

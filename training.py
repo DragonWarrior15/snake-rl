@@ -18,7 +18,7 @@ from agent import DeepQLearningAgent, PolicyGradientAgent,\
 
 # some global variables
 tf.random.set_seed(42)
-board_size = 10
+board_size = 6
 frames = 2 # keep frames >= 2
 version = 'v15.3'
 max_time_limit = 998 # 998
@@ -26,14 +26,14 @@ supervised = False
 n_actions = 4
 
 # define no of episodes, logging frequency
-episodes = 1 * (10**4)
+episodes = 1 * (10**5)
 log_frequency = 500
 games_eval = 8
 
 # setup the agent
 # agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=60000)
 # agent = PolicyGradientAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=2000)
-agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=2000)
+agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=10000)
 # agent.print_models()
 
 # check in the same order as class hierarchy
@@ -71,7 +71,7 @@ if(agent_type in ['AdvantageActorCriticAgent']):
     reward_type = 'current'
     sample_actions = True
     exploration_threshold = 0.1
-    n_games_training = 8
+    n_games_training = 32
     decay = 1
 
 # decay = np.exp(np.log((epsilon_end/epsilon))/episodes)
@@ -120,12 +120,12 @@ for index in tqdm(range(episodes)):
 
     if(agent_type in ['AdvantageActorCriticAgent']):
         # play a couple of games and train on all
-        _, _, _ = play_game2(env, agent, n_actions, epsilon=epsilon,
+        _, _, total_games = play_game2(env, agent, n_actions, epsilon=epsilon,
                        n_games=n_games_training, record=True,
                        sample_actions=sample_actions, reward_type=reward_type,
-                       frame_mode=True, total_games=n_games_training)
+                       frame_mode=True, total_games=n_games_training*2)
         loss = agent.train_agent(batch_size=agent.get_buffer_size(), 
-                                 num_games=n_games_training, reward_clip=True)
+                                 num_games=total_games, reward_clip=True)
 
     if(agent_type in ['PolicyGradientAgent', 'AdvantageActorCriticAgent']):
         # for policy gradient algorithm, we only take current episodes for training
