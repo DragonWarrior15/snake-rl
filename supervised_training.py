@@ -10,22 +10,22 @@ from tqdm import tqdm
 from collections import deque
 import pandas as pd
 import time
-from utils import play_game
-from game_environment import Snake
-from agent import HamiltonianCycleAgent, BreadthFirstSearchAgent, SupervisedLearningAgent
+from utils import play_game2
+from game_environment import SnakeNumpy
+from agent import BreadthFirstSearchAgent, SupervisedLearningAgent
 
 # some global variables
 board_size = 10
 frames = 2
-version = 'v15.1'
+version = 'v15.2'
 max_time_limit = 18 # 998
 generate_training_data = False
 do_training = True
-
+n_games_training = 100
 
 # setup the environment
-env = Snake(board_size=board_size, frames=frames, max_time_limit=max_time_limit)
-s = env.reset()
+env = SnakeNumpy(board_size=board_size, frames=frames, games=n_games_training,
+                 max_time_limit=max_time_limit)
 n_actions = env.get_num_actions()
 
 if(generate_training_data):
@@ -37,14 +37,17 @@ if(generate_training_data):
     while its training
     '''
     # generate training data
-    # agent = HamiltonianCycleAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=10000)
-    agent = BreadthFirstSearchAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=10000)
+    agent = BreadthFirstSearchAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=60000)
     for index in tqdm(range(1)):
         # make small changes to the buffer and slowly train
-        current_rewards = play_game(env, agent, n_actions, epsilon=-1,
-                            n_games=500, record=True, sample_actions=False,
-                            reward_type='discounted_future')
+        curr_time = time.time()
+        _, _, _ = play_game2(env, agent, n_actions, epsilon=-1,
+                       n_games=n_games_training, record=True, 
+                       reward_type='current', frame_mode=True, 
+                       total_frames=60000, stateful=True)
 
+        print('Buffer size {:d} filled in {:.2f}s'.format(agent.get_buffer_size(), 
+                                                          time.time()-curr_time))
         file_path = 'models/{:s}'.format(version)
         if(not os.path.exists(file_path)):
             os.mkdir(file_path)
@@ -62,16 +65,14 @@ if(do_training):
         agent.load_buffer(file_path=file_path, iteration=((index%total_files)+1))
         print(agent.get_buffer_size())
         # make small changes to the buffer and slowly train
-        loss = agent.train_agent(epochs=2)
-        max_value = agent.get_max_output()
+        loss = agent.train_agent(epochs=20)
         print('Loss at buffer {:d} is : {:.5f}'.format((index%total_files)+1, loss))
-        agent.update_target_net()
     '''
     before saving the model, normalize the output layer weights
     to prevent explosion in outputs, keep track of max of output
     during training, inspired from arXiv:1709.04083v2
     '''
-    agent.normalize_output_layer()
+    agent.normalize_layers(agent.get_max_output())
     agent.update_target_net()
     # save the trained model
     agent.save_model(file_path='models/{:s}'.format(version))
