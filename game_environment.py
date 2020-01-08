@@ -857,13 +857,13 @@ class SnakeNumpy:
 
     def _get_food_reward(self, f):
         ''' try different rewards schemes for when food is eaten '''
-        return((self._snake_length[f] - self._start_length + 1) * self._rewards['food'])
-        # return self._rewards['food']
+        # return((self._snake_length[f] - self._start_length + 1) * self._rewards['food'])
+        return self._rewards['food']
 
     def _get_death_reward(self, f):
         ''' try different rewards schemes for death '''
-        return (self._snake_length[f] - self._start_length+1)*self._rewards['out']
-        # return self._rewards['out']
+        # return (self._snake_length[f] - self._start_length+1)*self._rewards['out']
+        return self._rewards['out']
 
     def _check_if_done(self, action):
         '''
