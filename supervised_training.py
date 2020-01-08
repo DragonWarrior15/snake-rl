@@ -65,9 +65,8 @@ if(do_training):
         agent.load_buffer(file_path=file_path, iteration=((index%total_files)+1))
         print(agent.get_buffer_size())
         # make small changes to the buffer and slowly train
-        loss = agent.train_agent(epochs=10)
+        loss = agent.train_agent(epochs=20)
         print('Loss at buffer {:d} is : {:.5f}'.format((index%total_files)+1, loss))
-        agent.update_target_net()
     '''
     before saving the model, normalize the output layer weights
     to prevent explosion in outputs, keep track of max of output

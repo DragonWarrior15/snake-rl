@@ -152,18 +152,33 @@ class Snake:
         self._n_frames = frames
         self._rewards = {'out':-1, 'food':1, 'time':0, 'no_food':0}
         # start length is constrained to be less than half of board size
-        self._start_length = min(start_length, (board_size-2)//2)
+        # self._start_length = min(start_length, (board_size-2)//2)
+        self._start_length = 2
         # set numpy seed for reproducible results
         # np.random.seed(seed)
         # time limit to contain length of game, -1 means run till end
         self._max_time_limit = max_time_limit
         # other variables that can be quickly reused across multiple games
-        self._static_board_template = self._value['board'] * np.ones((self._board_size, self._board_size))
+        self._get_static_board_template()
+
+    def _get_static_board_template(self):
+        """Creates the static board template. By default a single border
+        board is created, otherwise obstacles are also present
+        """
         # make board borders
+        self._static_board_template = self._value['board'] * np.ones((self._board_size, self._board_size))
         self._static_board_template[:, 0] = self._value['border']
         self._static_board_template[:, self._board_size-1] = self._value['border']
         self._static_board_template[0, :] = self._value['border']
         self._static_board_template[self._board_size-1, :] = self._value['border']
+
+        if(0):
+            # add obstacles to the board where no border
+            for i in range(1):
+                pos_board = np.random.random(self._static_board_template.shape) * \
+                        (self._static_board_template == self._value['board'])
+                self._static_board_template[pos_board == pos_board.max()] = \
+                                        self._value['border']
 
     def reset(self):
         """Resets the environment to the starting state. Snake is kept same
@@ -342,8 +357,11 @@ class Snake:
             info : any auxillary game information
         '''
         # assert action in list(range(self._n_actions)), "Action must be in " + list(range(self._n_actions))
-        assert action in self._actions, "Action must be in " + [k for k in self._actions]
+        # assert action in self._actions, "Action must be in " + [k for k in self._actions]
         reward, done = 0, 0
+
+        if isinstance(action, np.ndarray):
+            action = int(action[0])
 
         # check if the current action is feasible
         reward, done, can_eat_food, termination_reason = self._check_if_done(action)
@@ -364,6 +382,20 @@ class Snake:
 
 
         return self._queue_to_board(), reward, done, info
+
+    def get_legal_moves(self):
+        """Get legal moves for the current board state using
+        the current snake direction (all moves except moving in the opposite
+        direction are valid)
+
+        Returns
+        -------
+        valid_moves : Numpy array
+            valid moves mask for all games
+        """    
+        a = np.ones((1, self._n_actions), dtype=np.uint8)
+        a[0, (self._snake_direction-2)%4] = 0
+        return a.copy()
 
     def _get_food_reward(self):
         ''' try different rewards schemes for when food is eaten '''
@@ -467,7 +499,7 @@ class SnakeNumpy:
             Keeps track of total rewards accumulated till current timestamp
             resets whenever a new game is started
     '''
-    def __init__(self, board_size=10, frames=2, games=10, start_length=5, seed=42,
+    def __init__(self, board_size=10, frames=2, games=10, start_length=2, seed=42,
                  max_time_limit=298, frame_mode=False):
         '''
         Initialization function for the environment.
@@ -488,15 +520,6 @@ class SnakeNumpy:
         # np.random.seed(seed)
         # time limit to contain length of game, -1 means run till end
         self._max_time_limit = max_time_limit
-        # other variables that can be quickly reused across multiple games
-        self._border = self._value['board'] * np.ones((self._board_size-2,self._board_size-2), 
-                                                      dtype=np.uint8)
-        # make board borders
-        self._border = np.pad(self._border, 1, mode='constant',
-                              constant_values=self._value['border'])\
-                          .reshape(1,self._board_size,self._board_size)
-        self._border = np.zeros((self._n_games, self._board_size, self._board_size)) \
-                        + self._border
         # queue for board
         self._board = deque(maxlen = self._n_frames)
         # define the convolutions for movement operations
@@ -570,6 +593,17 @@ class SnakeNumpy:
         self._body_random[idx1,::-1,:] = self._body_random[idx2,:,:].copy()
         self._head_random[idx1,::-1,:] = self._head_random[idx2,:,:].copy()
         self._direction_random[idx1] = 1
+
+    def _static_board(self):
+        """Generates the static borders"""
+        self._border = self._value['board'] * np.ones((self._board_size-2,self._board_size-2), 
+                                                      dtype=np.uint8)
+        # make board borders
+        self._border = np.pad(self._border, 1, mode='constant',
+                              constant_values=self._value['border'])\
+                          .reshape(1,self._board_size,self._board_size)
+        self._border = np.zeros((self._n_games, self._board_size, self._board_size)) \
+                        + self._border
 
     def _calculate_board(self):
         ''' combine all elements together to get the board '''
@@ -657,6 +691,9 @@ class SnakeNumpy:
         self._random_seq()
         # random boards for snake position (all horizontal)
         self._random_snake()
+
+        # set the random boards (with/without obstacles)
+        self._static_board()
         
         # initialize snake, head takes the value 1 always
         self._food = np.zeros((self._n_games, self._board_size, self._board_size), dtype=np.uint8)
@@ -820,13 +857,13 @@ class SnakeNumpy:
 
     def _get_food_reward(self, f):
         ''' try different rewards schemes for when food is eaten '''
-        # return((self._snake_length[f] - self._start_length + 1) * self._rewards['food'])
-        return self._rewards['food']
+        return((self._snake_length[f] - self._start_length + 1) * self._rewards['food'])
+        # return self._rewards['food']
 
     def _get_death_reward(self, f):
         ''' try different rewards schemes for death '''
-        # return (self._snake_length[f] - self._start_length+1)*self._rewards['out']
-        return self._rewards['out']
+        return (self._snake_length[f] - self._start_length+1)*self._rewards['out']
+        # return self._rewards['out']
 
     def _check_if_done(self, action):
         '''

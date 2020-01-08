@@ -18,7 +18,7 @@ from agent import DeepQLearningAgent, PolicyGradientAgent,\
 
 # some global variables
 tf.random.set_seed(42)
-board_size = 6
+board_size = 10
 frames = 2 # keep frames >= 2
 version = 'v15.3'
 max_time_limit = 998 # 998
@@ -31,9 +31,9 @@ log_frequency = 500
 games_eval = 8
 
 # setup the agent
-# agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=60000)
+agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=60000)
 # agent = PolicyGradientAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=2000)
-agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=10000)
+# agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=10000)
 # agent.print_models()
 
 # check in the same order as class hierarchy

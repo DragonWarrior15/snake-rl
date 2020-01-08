@@ -451,7 +451,7 @@ class DeepQLearningAgent(Agent):
             assert isinstance(iteration, int), "iteration should be an integer"
         else:
             iteration = 0
-            self._model.load_weights("{}/model_{:04d}.h5".format(file_path, iteration))
+        self._model.load_weights("{}/model_{:04d}.h5".format(file_path, iteration))
         if(self._use_target_net):
             self._target_net.load_weights("{}/model_{:04d}_target.h5".format(file_path, iteration))
         # print("Couldn't locate models at {}, check provided path".format(file_path))
@@ -802,6 +802,7 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
             loss = actor_loss + critic_loss
         # get the gradients
         grads = tape.gradient(loss, model.trainable_weights)
+        # grads = [tf.clip_by_value(grad, -5, 5) for grad in grads]
         # run the optimizer
         self._optimizer.apply_gradients(zip(grads, model.trainable_variables))
 
@@ -1008,7 +1009,7 @@ class SupervisedLearningAgent(DeepQLearningAgent):
         # instead of the reward value
         self._model_action_out = Softmax()(self._model.get_layer('action_values').output)
         self._model_action = Model(inputs=self._model.get_layer('input').input, outputs=self._model_action_out)
-        self._model_action.compile(optimizer=RMSprop(0.001), loss='categorical_crossentropy')
+        self._model_action.compile(optimizer=Adam(0.0005), loss='categorical_crossentropy')
         
     def train_agent(self, batch_size=32, num_games=1, epochs=5, 
                     reward_clip=False):
@@ -1052,7 +1053,7 @@ class SupervisedLearningAgent(DeepQLearningAgent):
             The maximum output produced by the network (_model)
         """
         s, _, _, _, _, _ = self._buffer.sample(self.get_buffer_size())
-        max_value = np.max(self._model.predict(self._normalize_board(s)))
+        max_value = np.max(np.abs(self._model.predict(self._normalize_board(s))))
         return max_value
 
     def normalize_layers(self, max_value=None):

@@ -275,17 +275,23 @@ def visualize_game(env, agent, path='images/game_visual.png', debug=False,
     done = 0
     while(not done):
         # print('frame no ', len(game_images))
-        a = agent.move(s, env.get_values())
+        legal_moves = env.get_legal_moves()
+        a = agent.move(s, legal_moves, env.get_values())
         next_s, r, done, info = env.step(a)
         qvalues.append(agent._get_model_outputs(s)[0])
         food_count.append(info['food'])
         game_images.append([next_s[:,:,0], info['time']])
         s = next_s.copy()
         if(debug):
-            print(info['time'], qvalues[-1], a, r, info['food'], done)
-    qvalues.append([0,0,0])
+            print(info['time'], qvalues[-1], a, r, info['food'], done, legal_moves)
+    qvalues.append([0] * env.get_num_actions())
     food_count.append(food_count[-1])
     print('Game ran for {:d} frames'.format(len(game_images)))
+    # append a few static frames in the end for pause effect
+    for _ in range(5):
+        qvalues.append(qvalues[-1])
+        food_count.append(food_count[-1])
+        game_images.append(game_images[-1])
     # plot the game
     if(animation):
         fig, axs = plt.subplots(1, 1,
@@ -334,7 +340,7 @@ def anim_frames_func(board_time, axs, color_map, food_count, qvalues):
                             color=color_map[board[i, j]])
             axs.add_patch(rect)
     # axs[i][j].imshow(game_images[index], cmap='gray')
-    title = 'time:{:d}, score:{:d}\nright:{:.2f}, nothing:{:.2f}, left:{:.2f}'.\
+    title = 'time:{:d}, score:{:d}\n{:.2f} {:.2f} {:.2f} {:.2f}'.\
                 format(time, food_count[time], *qvalues[time])
     axs.set_title(title)
     plt.tight_layout()
