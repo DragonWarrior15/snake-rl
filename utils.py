@@ -277,7 +277,7 @@ def visualize_game(env, agent, path='images/game_visual.png', debug=False,
         # print('frame no ', len(game_images))
         legal_moves = env.get_legal_moves()
         a = agent.move(s, legal_moves, env.get_values())
-        next_s, r, done, info = env.step(a)
+        next_s, r, done, info, _ = env.step(a)
         qvalues.append(agent._get_model_outputs(s)[0])
         food_count.append(info['food'])
         game_images.append([next_s[:,:,0], info['time']])
