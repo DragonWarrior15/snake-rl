@@ -18,12 +18,17 @@ from agent import DeepQLearningAgent, PolicyGradientAgent,\
 
 # some global variables
 tf.random.set_seed(42)
-board_size = 10
-frames = 2 # keep frames >= 2
-version = 'v15.3'
-max_time_limit = 998 # 998
-supervised = False
-n_actions = 4
+version = 'v17.1'
+
+# get training configurations
+with open('model_config/{:s}.json', 'r') as f:
+    m = json.loads(f.read())
+    board_size = m['board_size']
+    frames = m['frames'] # keep frames >= 2
+    max_time_limit = m['max_time_limit']
+    supervised = m['supervised']
+    n_actions = m['n_actions']
+    obstacles = m['obstacles']
 
 # define no of episodes, logging frequency
 episodes = 1 * (10**5)
@@ -52,7 +57,7 @@ if(agent_type in ['DeepQLearningAgent']):
     reward_type = 'current'
     sample_actions = False
     n_games_training = 8*16
-    decay = 0.97
+    decay = 0.99
     if(supervised):
         # lower the epsilon since some starting policy has already been trained
         epsilon = 0.6
@@ -90,7 +95,7 @@ if(agent_type in ['DeepQLearningAgent']):
         games = 512
         env = SnakeNumpy(board_size=board_size, frames=frames, 
                     max_time_limit=max_time_limit, games=games,
-                    frame_mode=True)
+                    frame_mode=True, obstacles=True, version=version)
         ct = time.time()
         _ = play_game2(env, agent, n_actions, n_games=games, record=True,
                        epsilon=epsilon, verbose=True, reset_seed=False,
@@ -99,10 +104,10 @@ if(agent_type in ['DeepQLearningAgent']):
 
 env = SnakeNumpy(board_size=board_size, frames=frames, 
             max_time_limit=max_time_limit, games=n_games_training,
-            frame_mode=True)
+            frame_mode=True, obstacles=obstacles, version=version)
 env2 = SnakeNumpy(board_size=board_size, frames=frames, 
             max_time_limit=max_time_limit, games=games_eval,
-            frame_mode=True)
+            frame_mode=True, obstacles=obstacles, version=version)
 
 # training loop
 model_logs = {'iteration':[], 'reward_mean':[],

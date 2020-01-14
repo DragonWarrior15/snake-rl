@@ -9,14 +9,23 @@ from utils import visualize_game
 # import keras.backend as K
 
 # some global variables
-board_size = 10
-frames = 2
-version = 'v15.1'
-iteration_list = [188000]
-max_time_limit = -1
+version = 'v17.1'
+
+with open('model_config/{:s}.json', 'r') as f:
+    m = json.loads(f.read())
+    board_size = m['board_size']
+    frames = m['frames'] # keep frames >= 2
+    max_time_limit = m['max_time_limit']
+    supervised = m['supervised']
+    n_actions = m['n_actions']
+    obstacles = m['obstacles']
+
+iteration_list = [248500]
+max_time_limit = 598
 
 # setup the environment
-env = Snake(board_size=board_size, frames=frames, max_time_limit=max_time_limit)
+env = Snake(board_size=board_size, frames=frames, max_time_limit=max_time_limit,
+            obstacles=obstacles, version=version)
 s = env.reset()
 n_actions = env.get_num_actions()
 
@@ -31,7 +40,7 @@ agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_act
 for iteration in iteration_list:
     agent.load_model(file_path='models/{:s}'.format(version), iteration=iteration)
     
-    for i in range(5):
+    for i in range(10,11):
         visualize_game(env, agent,
             path='images/game_visual_{:s}_{:d}_{:d}.mp4'.format(version, iteration, i),
             debug=False, animate=True, fps=12)

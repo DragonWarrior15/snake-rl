@@ -1,0 +1,33 @@
+{
+    "_comment":"only add model layers except the input and final output",
+    "board_size":10,
+    "frames":2,
+    "max_time_limit":998,
+    "supervised":0,
+    "n_actions":4,
+    "obstacles":0,
+    "model":{
+        "Conv2D":{
+            "filter_size_x":3,
+            "filter_size_y":3,
+            "total_filters":16,
+            "activation":"relu",
+            "data_format":"channels_last"
+        },
+        "Conv2D_1":{
+            "filter_size_x":3,
+            "filter_size_y":3,
+            "total_filters":32,
+            "activation":"relu",
+            "data_format":"channels_last"
+        },
+        "Flatten":{
+
+        },
+        "Dense":{
+            "size":64,
+            "activation":"relu",
+            "name":"action_prev_dense"
+        }
+    }
+}
