@@ -175,7 +175,7 @@ class Snake:
         # self._start_length = min(start_length, (board_size-2)//2)
         self._start_length = 2
         # set numpy seed for reproducible results
-        # np.random.seed(seed)
+        np.random.seed(seed)
         # time limit to contain length of game, -1 means run till end
         self._max_time_limit = max_time_limit
         # obstacles

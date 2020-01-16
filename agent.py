@@ -387,16 +387,11 @@ class DeepQLearningAgent(Agent):
             l = m['model'][layer]
             if('Conv2D' in layer):
                 # add convolutional layer
-                x = Conv2D(l['total_filters'], 
-                           (l['filter_size_x'], l['filter_size_x']), 
-                           activation=l['activation'], 
-                           data_format=l['data_format'])(x)
+                x = Conv2D(**l)(x)
             if('Flatten' in layer):
                 x = Flatten()(x)
             if('Dense' in layer):
-                x = Dense(l['size'], 
-                          activation=l['activation'], 
-                          name=l['name'])(x)
+                x = Dense(**l)(x)
         out = Dense(self._n_actions, activation='linear', name='action_values')(x)
         model = Model(inputs=input_board, outputs=out)
         model.compile(optimizer=RMSprop(0.0005), loss=mean_huber_loss)
@@ -419,7 +414,7 @@ class DeepQLearningAgent(Agent):
 
         return model
 
-    def set_trainable_weights(self):
+    def set_weights_trainable(self):
         """Set selected layers to non trainable and compile the model"""
         for layer in self._model.layers:
             layer.trainable = False
@@ -595,13 +590,15 @@ class PolicyGradientAgent(DeepQLearningAgent):
         defines the policy update function to use while training
     """
     def __init__(self, board_size=10, frames=4, buffer_size=10000,
-                 gamma = 0.99, n_actions=3, use_target_net=False):
+                 gamma = 0.99, n_actions=3, use_target_net=False,
+                 version=''):
         """Initializer for PolicyGradientAgent, similar to DeepQLearningAgent
         but does an extra assignment to the training function
         """
         DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames,
                                 buffer_size=buffer_size, gamma=gamma,
-                                n_actions=n_actions, use_target_net=False)
+                                n_actions=n_actions, use_target_net=False,
+                                version=version)
         self._actor_optimizer = tf.keras.optimizer.Adam(1e-6)
 
     def _agent_model(self):
@@ -677,10 +674,12 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
         Custom function to prepare the 
     """
     def __init__(self, board_size=10, frames=4, buffer_size=10000,
-                 gamma = 0.99, n_actions=3, use_target_net=True):
+                 gamma = 0.99, n_actions=3, use_target_net=True,
+                 version=''):
         DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames,
                                 buffer_size=buffer_size, gamma=gamma,
-                                n_actions=n_actions, use_target_net=use_target_net)
+                                n_actions=n_actions, use_target_net=use_target_net,
+                                version=version)
         self._optimizer = tf.keras.optimizers.RMSprop(5e-4)
 
     def _agent_model(self):
@@ -866,10 +865,12 @@ class HamiltonianCycleAgent(Agent):
         n_actions (int): no of actions available in the action space
     """
     def __init__(self, board_size=10, frames=4, buffer_size=10000,
-                 gamma = 0.99, n_actions=3, use_target_net=True):
+                 gamma = 0.99, n_actions=3, use_target_net=False,
+                 version=''):
         assert board_size%2 == 0, "Board size should be odd for hamiltonian cycle"
         Agent.__init__(self, board_size=board_size, frames=frames, buffer_size=buffer_size,
-                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net)
+                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net,
+                 version=version)
         # self._get_cycle()
         self._get_cycle_square()
     
@@ -1045,12 +1046,14 @@ class SupervisedLearningAgent(DeepQLearningAgent):
         The model that will be trained and is simply DQN model + softmax
     """
     def __init__(self, board_size=10, frames=2, buffer_size=10000,
-                 gamma=0.99, n_actions=3, use_target_net=True):
+                 gamma=0.99, n_actions=3, use_target_net=True,
+                 version=''):
         """Initializer for SupervisedLearningAgent, similar to DeepQLearningAgent
         but creates extra layer and model for classification training
         """        
         DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames, buffer_size=buffer_size,
-                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net)
+                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net,
+                 version=version)
         # define model with softmax activation, and use action as target
         # instead of the reward value
         self._model_action_out = Softmax()(self._model.get_layer('action_values').output)

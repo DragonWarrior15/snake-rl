@@ -13,19 +13,29 @@ import time
 from utils import play_game2
 from game_environment import SnakeNumpy
 from agent import BreadthFirstSearchAgent, SupervisedLearningAgent
+import json
 
 # some global variables
-board_size = 10
-frames = 2
-version = 'v15.2'
-max_time_limit = 18 # 998
+version = 'v15.5'
+
+# get training configurations
+with open('model_config/{:s}.json'.format(version), 'r') as f:
+    m = json.loads(f.read())
+    board_size = m['board_size']
+    frames = m['frames'] # keep frames >= 2
+    max_time_limit = m['max_time_limit']
+    supervised = bool(m['supervised'])
+    n_actions = m['n_actions']
+    obstacles = bool(m['obstacles'])
+
+max_time_limit = 28 # 998
 generate_training_data = False
 do_training = True
 n_games_training = 100
 
 # setup the environment
 env = SnakeNumpy(board_size=board_size, frames=frames, games=n_games_training,
-                 max_time_limit=max_time_limit)
+                 max_time_limit=max_time_limit, obstacles=obstacles, version=version)
 n_actions = env.get_num_actions()
 
 if(generate_training_data):
@@ -37,7 +47,9 @@ if(generate_training_data):
     while its training
     '''
     # generate training data
-    agent = BreadthFirstSearchAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=60000)
+    agent = BreadthFirstSearchAgent(board_size=board_size, frames=frames, 
+                                    n_actions=n_actions, buffer_size=60000,
+                                    version=version)
     for index in tqdm(range(1)):
         # make small changes to the buffer and slowly train
         curr_time = time.time()
@@ -56,7 +68,9 @@ if(generate_training_data):
 
 if(do_training):
     # setup the agent
-    agent = SupervisedLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=1)
+    agent = SupervisedLearningAgent(board_size=board_size, frames=frames, 
+                                    n_actions=n_actions, buffer_size=1,
+                                    version=version)
     # agent.print_models()
     total_files = 1
     for index in tqdm(range(1 * total_files)):

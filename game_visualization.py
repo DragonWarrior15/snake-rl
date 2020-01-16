@@ -6,19 +6,20 @@ from agent import DeepQLearningAgent, PolicyGradientAgent, \
         AdvantageActorCriticAgent, HamiltonianCycleAgent, BreadthFirstSearchAgent
 from game_environment import Snake, SnakeNumpy
 from utils import visualize_game
+import json
 # import keras.backend as K
 
 # some global variables
 version = 'v17.1'
 
-with open('model_config/{:s}.json', 'r') as f:
+with open('model_config/{:s}.json'.format(version), 'r') as f:
     m = json.loads(f.read())
     board_size = m['board_size']
     frames = m['frames'] # keep frames >= 2
     max_time_limit = m['max_time_limit']
-    supervised = m['supervised']
+    supervised = bool(m['supervised'])
     n_actions = m['n_actions']
-    obstacles = m['obstacles']
+    obstacles = bool(m['obstacles'])
 
 iteration_list = [248500]
 max_time_limit = 598

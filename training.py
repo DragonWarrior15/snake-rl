@@ -15,20 +15,22 @@ from game_environment import Snake, SnakeNumpy
 import tensorflow as tf
 from agent import DeepQLearningAgent, PolicyGradientAgent,\
                 AdvantageActorCriticAgent, mean_huber_loss
+import json
 
 # some global variables
 tf.random.set_seed(42)
 version = 'v17.1'
 
 # get training configurations
-with open('model_config/{:s}.json', 'r') as f:
+with open('model_config/{:s}.json'.format(version), 'r') as f:
     m = json.loads(f.read())
     board_size = m['board_size']
     frames = m['frames'] # keep frames >= 2
     max_time_limit = m['max_time_limit']
-    supervised = m['supervised']
+    supervised = bool(m['supervised'])
     n_actions = m['n_actions']
-    obstacles = m['obstacles']
+    obstacles = bool(m['obstacles'])
+    buffer_size = m['buffer_size']
 
 # define no of episodes, logging frequency
 episodes = 1 * (10**5)
@@ -36,9 +38,12 @@ log_frequency = 500
 games_eval = 8
 
 # setup the agent
-agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=60000)
-# agent = PolicyGradientAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=2000)
-# agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, n_actions=n_actions, buffer_size=10000)
+agent = DeepQLearningAgent(board_size=board_size, frames=frames, n_actions=n_actions, 
+                           buffer_size=buffer_size, version=version)
+# agent = PolicyGradientAgent(board_size=board_size, frames=frames, n_actions=n_actions, 
+        # buffer_size=2000, version=version)
+# agent = AdvantageActorCriticAgent(board_size=board_size, frames=frames, n_actions=n_actions, 
+                                  # buffer_size=10000, version=version)
 # agent.print_models()
 
 # check in the same order as class hierarchy
@@ -57,13 +62,14 @@ if(agent_type in ['DeepQLearningAgent']):
     reward_type = 'current'
     sample_actions = False
     n_games_training = 8*16
-    decay = 0.99
+    decay = 0.97
     if(supervised):
         # lower the epsilon since some starting policy has already been trained
         epsilon = 0.6
         # load the existing model from a supervised method
         # or some other pretrained model
         agent.load_model(file_path='models/{:s}'.format(version))
+        # agent.set_weights_trainable()
 if(agent_type in ['PolicyGradientAgent']):
     epsilon, epsilon_end = -1, -1
     reward_type = 'discounted_future'
@@ -95,7 +101,7 @@ if(agent_type in ['DeepQLearningAgent']):
         games = 512
         env = SnakeNumpy(board_size=board_size, frames=frames, 
                     max_time_limit=max_time_limit, games=games,
-                    frame_mode=True, obstacles=True, version=version)
+                    frame_mode=True, obstacles=obstacles, version=version)
         ct = time.time()
         _ = play_game2(env, agent, n_actions, n_games=games, record=True,
                        epsilon=epsilon, verbose=True, reset_seed=False,
