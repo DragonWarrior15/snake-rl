@@ -6,7 +6,7 @@
     "supervised":0,
     "n_actions":4,
     "obstacles":1,
-    "buffer_size":100000,
+    "buffer_size":80000,
     "model":{
         "Conv2D":{
             "filters":16,
@@ -24,12 +24,6 @@
         "Conv2D_2":{
             "filters":64,
             "kernel_size":[5,5],
-            "activation":"relu",
-            "data_format":"channels_last"
-        },
-        "Conv2D_3":{
-            "filters":64,
-            "kernel_size":[4,4],
             "activation":"relu",
             "data_format":"channels_last"
         },
