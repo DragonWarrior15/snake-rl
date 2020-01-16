@@ -3,7 +3,7 @@ script for training the agent for snake using various methods
 '''
 # run on cpu
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 import numpy as np
 from tqdm import tqdm
@@ -33,7 +33,7 @@ with open('model_config/{:s}.json'.format(version), 'r') as f:
     buffer_size = m['buffer_size']
 
 # define no of episodes, logging frequency
-episodes = 1 * (10**5)
+episodes = 2 * (10**5)
 log_frequency = 500
 games_eval = 8
 
@@ -65,7 +65,7 @@ if(agent_type in ['DeepQLearningAgent']):
     decay = 0.97
     if(supervised):
         # lower the epsilon since some starting policy has already been trained
-        epsilon = 0.6
+        epsilon = 0.01
         # load the existing model from a supervised method
         # or some other pretrained model
         agent.load_model(file_path='models/{:s}'.format(version))
