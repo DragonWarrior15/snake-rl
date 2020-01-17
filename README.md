@@ -110,3 +110,18 @@ Initially, the pretrained model seems to have quicker learning, but DQN is able 
 Sample game from pretrained model<br>
 <img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v15.2_45500_0.gif" alt="model v15.2 agent">
 
+## Environment with Obstacles
+40000 10x10 boards are randomly generated with 8 cells as obstacles, while ensuring that the snake always has a path to navigate through the board. The code for the same can be located at : [obstacles_board_generator.py](../obstacles_board_generator.py)<br>
+Based on the sample plays below, it is evident that the learned policy generalizes well over boards with random obstacles, and even works good on boards with higher number of obstacles (although it has a higher chance of getting stuck in a loop)<br>
+
+Sample games from the best [model](../models/v17.1/model_163500.h5)<br>
+<img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v17.1_163500_6.gif" alt="model v17.1 agent"><img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v17.1_163500_9.gif" alt="model v17.1 agent"><br>
+
+Sample games from the best [model](../models/v17.1/model_163500.h5) on out of sample boards<br>
+<img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v17.1_163500_oos_5.gif" alt="model v17.1 agent"><img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v17.1_163500_oos_9.gif" alt="model v17.1 agent"><br>
+
+Sample game from the best [model](../models/v17.1/model_163500.h5) on empty board<br>
+<img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v17.1_163500_no_ob_1.gif" alt="model v17.1 agent">
+
+Sample game from the best [model](../models/v17.1/model_163500.h5) on board with more obstacles<br>
+<img width="400" height="400" src="https://github.com/DragonWarrior15/snake-rl/blob/master/images/game_visual_v17.1_163500_14_ob_3.gif" alt="model v17.1 agent">
