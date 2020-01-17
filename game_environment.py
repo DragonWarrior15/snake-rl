@@ -10,6 +10,8 @@ The board borders are different from board color
 import numpy as np
 from collections import deque
 import matplotlib.pyplot as plt
+import pickle
+import tensorflow as tf
 
 class Position:
     """Class for defining any position on a 2D grid
@@ -91,49 +93,53 @@ class Snake:
 
     Attributes
     ----------
-        _value : dict
-            Dictionary containing color values for different parts of board
-        _actions : dict
-            Dictionary containing mapping from user action to board action
-        _n_actions : int
-            Count of actions available in the environment, should be same
-            for both the environment and the agent that plays
-        _board_size : int
-            Length of one side of the square board
-        _n_frames : int
-            Number of frames kept in any state, helps with movement information
-        _rewards : dict
-            Values for rewards for different events
-        _start_length : int
-            The length of the snake when the game starts
-        _max_time_limit : int
-            The maximum time to run the game for, -1 indicates forever
-        _static_board_template : Numpy array
-            Contains all zeros except borders, set according to _value['border']
-        _snake : Deque
-            Deque containing the individual positions of the snake body.
-            For movement, last value is simply popped and appended to the left
-            of the queue. When increasing length, new position is appended 
-            to the left of the queue
-        _snake_length : int
-            Keeps track of the length of the snake, updated when food is eaten
-        _snake_head : Position
-            Keeps track of the head of the snake (row and col)
-        _board : Deque
-            Keeps track of individual frames in a game state. During update,
-            new frame is appended to the left. Queue length is always fixed
-        _snake_direction : int
-            Keeps track of in which direction is the snake moving. This is
-            necessary to correctly update the snake position given an action
-        _time : int
-            Keeps track of time elapsed (in steps) since game started
+    _value : dict
+        Dictionary containing color values for different parts of board
+    _actions : dict
+        Dictionary containing mapping from user action to board action
+    _n_actions : int
+        Count of actions available in the environment, should be same
+        for both the environment and the agent that plays
+    _board_size : int
+        Length of one side of the square board
+    _n_frames : int
+        Number of frames kept in any state, helps with movement information
+    _rewards : dict
+        Values for rewards for different events
+    _start_length : int
+        The length of the snake when the game starts
+    _max_time_limit : int
+        The maximum time to run the game for, -1 indicates forever
+    _static_board_template : Numpy array
+        Contains all zeros except borders, set according to _value['border']
+    _snake : Deque
+        Deque containing the individual positions of the snake body.
+        For movement, last value is simply popped and appended to the left
+        of the queue. When increasing length, new position is appended 
+        to the left of the queue
+    _snake_length : int
+        Keeps track of the length of the snake, updated when food is eaten
+    _snake_head : Position
+        Keeps track of the head of the snake (row and col)
+    _board : Deque
+        Keeps track of individual frames in a game state. During update,
+        new frame is appended to the left. Queue length is always fixed
+    _snake_direction : int
+        Keeps track of in which direction is the snake moving. This is
+        necessary to correctly update the snake position given an action
+    _time : int
+        Keeps track of time elapsed (in steps) since game started
+    _obstacles : bool
+        Whether to use obstacles based board
+    _version : str
+        String representing the model version to pick obstacles files
 
-        board : numpy array containing information about various objects in the
-                board, including snake, food and obstacles
+    board : numpy array containing information about various objects in the
+            board, including snake, food and obstacles
         
     """
     def __init__(self, board_size=10, frames=2, start_length=5, seed=42,
-                 max_time_limit=298):
+                 max_time_limit=298, obstacles=False, version=''):
         """Initializer for the snake class. Some of the attributes are
         initialized here while the remaining are done in the reset function
         depending on which need to be refreshed every time game restarts
@@ -151,6 +157,11 @@ class Snake:
             Seed value to set (Not used here for randomness)
         max_time_limit : int, optional
             Maximum steps for the env to run (-1 indicates no bound)
+        obstacles : bool, optional
+            Whether to use obstacles boards
+        version : str, optional
+            Model version from which to pickup obstacle boards, should be given
+            if obstacles is set to True
         """
         
         # self._value = {'snake':255, 'board':0, 'food':128, 'head':180, 'border':80}
@@ -168,27 +179,32 @@ class Snake:
         # np.random.seed(seed)
         # time limit to contain length of game, -1 means run till end
         self._max_time_limit = max_time_limit
+        # obstacles
+        self._obstacles = obstacles
+        self._version = version
         # other variables that can be quickly reused across multiple games
-        self._get_static_board_template()
+        # self._get_static_board_template()
 
     def _get_static_board_template(self):
         """Creates the static board template. By default a single border
         board is created, otherwise obstacles are also present
         """
-        # make board borders
-        self._static_board_template = self._value['board'] * np.ones((self._board_size, self._board_size))
-        self._static_board_template[:, 0] = self._value['border']
-        self._static_board_template[:, self._board_size-1] = self._value['border']
-        self._static_board_template[0, :] = self._value['border']
-        self._static_board_template[self._board_size-1, :] = self._value['border']
+        if(not self._obstacles):
+            # make board borders
+            self._static_board_template = self._value['board'] * np.ones((self._board_size, self._board_size))
+            self._static_board_template[:, 0] = self._value['border']
+            self._static_board_template[:, self._board_size-1] = self._value['border']
+            self._static_board_template[0, :] = self._value['border']
+            self._static_board_template[self._board_size-1, :] = self._value['border']
+        else:
+            # read obstacles boards from file and randomly select one
+            with open('models/{:s}/obstacles_board'.format(self._version), 'rb') as f:
+                self._static_board_template = pickle.load(f)
 
-        if(0):
-            # add obstacles to the board where no border
-            for i in range(1):
-                pos_board = np.random.random(self._static_board_template.shape) * \
-                        (self._static_board_template == self._value['board'])
-                self._static_board_template[pos_board == pos_board.max()] = \
-                                        self._value['border']
+            self._static_board_template = self._static_board_template[\
+                        np.random.choice(self._static_board_template.shape[0], 1), :, :]
+            self._static_board_template = self._static_board_template.reshape((self._board_size, -1))
+            self._static_board_template *= self._value['border']
 
     def reset(self):
         """Resets the environment to the starting state. Snake is kept same
@@ -200,6 +216,7 @@ class Snake:
         board : Numpy array
             Starting game state
         """
+        self._get_static_board_template()
         board = self._static_board_template.copy()
         # initialize snake
         self._snake = deque()
@@ -657,9 +674,11 @@ class SnakeNumpy:
         to the snake defined in _body_random. The starting index should be same in
         the three arrays _body_random, _head_random and _direction_random
     _border : Numpy Array
-        a static template containing the borders of the board, this template is
-        exactly same across all games in an environment. Any sort of obstacles
-        must be introduced in this if needed
+        the current borders (with obstacles) applied to games in play
+    _border_random : Numpy Array
+        an array containing all possible borders that can be currently used
+        in the environment. This can either contain just static borders
+        or contain obstacle boards read from a file
     _food : Numpy Array
         of size _n_games * board size * board size and thus contains the position
         of the food in each of the games. The position is flagged by 1 (all other
@@ -705,9 +724,13 @@ class SnakeNumpy:
         of size _n_games, keeps track of whether a game has terminated
     _cumul_rewards : Numpy Array
         of size _n_games, keeps track of total rewards accumulated in a game
+    _obstacles : Bool
+        whether to read obstacles board from file or generate static boards
+    version : str
+        model version string
     """
     def __init__(self, board_size=10, frames=2, games=10, start_length=2, seed=42,
-                 max_time_limit=298, frame_mode=False):
+                 max_time_limit=298, frame_mode=False, obstacles=False, version=''):
         """Initialization function for the environment. Not all the attributes
         are populated here. Some will be populated in the reset function so
         that the same environment can be used multiple times
@@ -765,6 +788,9 @@ class SnakeNumpy:
         # whether frame mode or game mode, in former, environment
         # does a soft reset every time any board ends
         self._frame_mode = frame_mode
+        # whether to have obstacles
+        self._obstacles = obstacles
+        self._version = version
 
     def _queue_to_board(self):
         """Convert the current queue of frames to a tensor by stacking all
@@ -862,16 +888,25 @@ class SnakeNumpy:
         self._head_random[idx1,::-1,:] = self._head_random[idx2,:,:].copy()
         self._direction_random[idx1] = 1
 
-    def _static_board(self):
-        """Generates the static borders"""
-        self._border = self._value['board'] * np.ones((self._board_size-2,self._board_size-2), 
-                                                      dtype=np.uint8)
-        # make board borders
-        self._border = np.pad(self._border, 1, mode='constant',
-                              constant_values=self._value['border'])\
-                          .reshape(1,self._board_size,self._board_size)
-        self._border = np.zeros((self._n_games, self._board_size, self._board_size)) \
-                        + self._border
+    def _random_board(self):
+        """Generates the boards with static borders or reads
+        obstacle boards from a file
+        """
+        if(not self._obstacles):
+            # generate the boards ourselves
+            self._border_random = self._value['board'] * np.ones((self._board_size-2,self._board_size-2), 
+                                                          dtype=np.uint8)
+            # make board borders
+            self._border_random = np.pad(self._border_random, 1, mode='constant',
+                                  constant_values=self._value['border'])\
+                              .reshape(1,self._board_size,self._board_size)
+            self._border_random = np.zeros((self._n_games, self._board_size, self._board_size)) \
+                            + self._border_random
+        else:
+            with open('models/{:s}/obstacles_board'.format(self._version), 'rb') as f:
+                self._border_random = pickle.load(f)
+            self._border_random *= self._value['border']
+            # self._border_random[1:,:,:] = self._border_random[0,:,:]
 
     def _calculate_board_wo_food(self):
         """Combines all elements together to get the board without food"""
@@ -1026,11 +1061,25 @@ class SnakeNumpy:
         self._random_snake()
 
         # set the random boards (with/without obstacles)
-        self._static_board() # this is static currently
-        
+        self._random_board()
+        random_indices = np.random.choice(self._border_random.shape[0], self._n_games)
+        self._border = self._border_random[random_indices].copy()
+
         # initialize snake
         self._food = np.zeros((self._n_games, self._board_size, self._board_size), dtype=np.uint8)
-        random_indices = np.random.choice(np.arange(self._body_random.shape[0]), self._n_games)
+        if(not self._obstacles):
+            random_indices = np.random.choice(self._body_random.shape[0], self._n_games)
+        else:
+            # remove those snake positions that overlap with the obstacles
+            # individually for each game
+            random_indices = np.zeros((self._n_games,), dtype=np.int16)
+            for i in range(self._n_games):
+                random_indices_mask = ((self._body_random + self._head_random) * self._border[i])\
+                                        .sum(axis=(1,2)) == 0
+                # convert to probabilities for the random choice function
+                random_indices_mask = random_indices_mask/random_indices_mask.sum()
+                random_indices[i] = int(np.random.choice(np.arange(self._body_random.shape[0]), 
+                                                  1, p=random_indices_mask))
         # random_indices = np.ones((self._n_games), dtype=np.uint8) * ((self._board_size-2)//2)
         self._body, self._head, self._snake_direction = \
                                 self._body_random[random_indices].copy(),\
@@ -1045,8 +1094,10 @@ class SnakeNumpy:
         # initialize the queue
         for _ in range(self._n_frames):
             self._board.append(board.copy())
+        
         # modify the food position on the board, after board queue initialized
         self._get_food()
+        
         # set time elapsed, done and cumulative rewards to 0
         self._time = np.zeros((self._n_games), dtype=np.uint16)
         self._done = np.zeros((self._n_games,), dtype=np.uint8)
@@ -1067,8 +1118,28 @@ class SnakeNumpy:
         # reset food where terminated
         self._food[f] = np.zeros((fsum, self._board_size,self._board_size),
                                  dtype=np.uint8)
-        random_indices = np.random.choice(np.arange(self._body_random.shape[0]), fsum)
-        # random_indices = np.ones((fsum), dtype=np.uint8) * ((self._board_size-2)//2)
+
+        random_indices = np.random.choice(np.arange(self._border_random.shape[0]), fsum)
+        self._border[f] = self._border_random[random_indices].copy()
+
+        # initialize snake
+        if(not self._obstacles):
+            random_indices = np.random.choice(np.arange(self._body_random.shape[0]), fsum)
+        else:
+            # remove those snake positions that overlap with the obstacles
+            # individually for each game
+            random_indices = np.zeros((fsum,), dtype=np.int16)
+            i = 0
+            for i1 in range(self._done.shape[0]):
+                if(self._done[i1] == 1):
+                    random_indices_mask = ((self._body_random + self._head_random) * self._border[i1])\
+                                            .sum(axis=(1,2)) == 0
+                    # convert to probabilities for the random choice function
+                    random_indices_mask = random_indices_mask/random_indices_mask.sum()
+                    random_indices[i] = int(np.random.choice(np.arange(self._body_random.shape[0]), 
+                                                  1, p=random_indices_mask))
+                    i += 1
+
         # reset body head and direction where terminated
         self._body[f], self._head[f], self._snake_direction[f] = \
                         self._body_random[random_indices].copy(),\
@@ -1391,8 +1462,11 @@ class SnakeNumpy:
         reward[f1] += self._get_food_reward(f1)
         termination_reason[f1] = 1
         #####################################
-        # snake is colliding with border/obstacles, conv returns board-2 size matrix, hence
-        f2 = (new_head.sum((1,2)) == 0)
+        # snake is colliding with border/obstacles, conv returns board-2 size matrix
+        # hence in case of collision with borders, the whole matrix will be 0
+        # otherwise new_head and _border will overlap
+        f2 = ((new_head.sum((1,2)) == 0) | \
+                ((new_head * self._border).sum((1,2)) > 0))
         f = f2 & ~f1
         self._done[f] = 1
         reward[f] = self._get_death_reward(f)
@@ -1400,8 +1474,8 @@ class SnakeNumpy:
         #####################################
         # collision with self, collision with tail is allowed
         # the tail is defined to be equal to 1 in reset function
-        f3 = ((self._body * new_head).sum((1,2)) > 0) & \
-            ~((new_head * self._body).sum((1,2)) == 1)
+        body_head_sum = (self._body * new_head).sum((1,2))
+        f3 = (body_head_sum > 0) & ~(body_head_sum == 1)
         f = f3 & ~f2 & ~f1
         self._done[f] = 1
         reward[f] = self._get_death_reward(f)

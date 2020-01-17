@@ -6,6 +6,7 @@ import numpy as np
 import time
 import pickle
 from collections import deque
+import json
 import tensorflow as tf
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.optimizers import RMSprop, SGD, Adam
@@ -91,9 +92,12 @@ class Agent():
     _board_grid : Numpy array
         A square filled with values from 0 to board size **2,
         Useful when converting between row, col and int representation
+    _version : str
+        model version string
     """
     def __init__(self, board_size=10, frames=2, buffer_size=10000,
-                 gamma=0.99, n_actions=3, use_target_net=True):
+                 gamma=0.99, n_actions=3, use_target_net=True,
+                 version=''):
         """ initialize the agent
 
         Parameters
@@ -110,6 +114,8 @@ class Agent():
             Count of actions available in env
         use_target_net : bool, optional
             Whether to use target network, necessary for DQN convergence
+        version : str, optional except NN based models
+            path to the model architecture json
         """
         self._board_size = board_size
         self._n_frames = frames
@@ -122,6 +128,7 @@ class Agent():
         self.reset_buffer()
         self._board_grid = np.arange(0, self._board_size**2)\
                              .reshape(self._board_size, -1)
+        self._version = version
 
     def get_gamma(self):
         """Returns the agent's gamma value
@@ -266,13 +273,15 @@ class DeepQLearningAgent(Agent):
         Stores the target network graph of the DQN model
     """
     def __init__(self, board_size=10, frames=4, buffer_size=10000,
-                 gamma=0.99, n_actions=3, use_target_net=True):
+                 gamma=0.99, n_actions=3, use_target_net=True,
+                 version=''):
         """Initializer for DQN agent, arguments are same as Agent class
         except use_target_net is by default True and we call and additional
         reset models method to initialize the DQN networks
         """
         Agent.__init__(self, board_size=board_size, frames=frames, buffer_size=buffer_size,
-                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net)
+                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net,
+                 version=version)
         self.reset_models()
 
     def reset_models(self):
@@ -369,11 +378,31 @@ class DeepQLearningAgent(Agent):
             DQN model graph
         """
         # define the input layer, shape is dependent on the board size and frames
+        with open('model_config/{:s}.json'.format(self._version), 'r') as f:
+            m = json.loads(f.read())
+        
+        input_board = Input((self._board_size, self._board_size, self._n_frames,), name='input')
+        x = input_board
+        for layer in m['model']:
+            l = m['model'][layer]
+            if('Conv2D' in layer):
+                # add convolutional layer
+                x = Conv2D(**l)(x)
+            if('Flatten' in layer):
+                x = Flatten()(x)
+            if('Dense' in layer):
+                x = Dense(**l)(x)
+        out = Dense(self._n_actions, activation='linear', name='action_values')(x)
+        model = Model(inputs=input_board, outputs=out)
+        model.compile(optimizer=RMSprop(0.0005), loss=mean_huber_loss)
+                
+        """
         input_board = Input((self._board_size, self._board_size, self._n_frames,), name='input')
         x = Conv2D(16, (3,3), activation='relu', data_format='channels_last')(input_board)
         x = Conv2D(32, (3,3), activation='relu', data_format='channels_last')(x)
+        x = Conv2D(64, (6,6), activation='relu', data_format='channels_last')(x)
         x = Flatten()(x)
-        x = Dense(64, activation = 'relu')(x)
+        x = Dense(64, activation = 'relu', name='action_prev_dense')(x)
         # this layer contains the final output values, activation is linear since
         # the loss used is huber or mse
         out = Dense(self._n_actions, activation='linear', name='action_values')(x)
@@ -381,8 +410,20 @@ class DeepQLearningAgent(Agent):
         model = Model(inputs=input_board, outputs=out)
         model.compile(optimizer=RMSprop(0.0005), loss=mean_huber_loss)
         # model.compile(optimizer=RMSprop(0.0005), loss='mean_squared_error')
+        """
 
         return model
+
+    def set_weights_trainable(self):
+        """Set selected layers to non trainable and compile the model"""
+        for layer in self._model.layers:
+            layer.trainable = False
+        # the last dense layers should be trainable
+        for s in ['action_prev_dense', 'action_values']:
+            self._model.get_layer(s).trainable = True
+        self._model.compile(optimizer = self._model.optimizer, 
+                            loss = self._model.loss)
+
 
     def get_action_proba(self, board, values=None):
         """Returns the action probability values using the DQN model
@@ -549,13 +590,15 @@ class PolicyGradientAgent(DeepQLearningAgent):
         defines the policy update function to use while training
     """
     def __init__(self, board_size=10, frames=4, buffer_size=10000,
-                 gamma = 0.99, n_actions=3, use_target_net=False):
+                 gamma = 0.99, n_actions=3, use_target_net=False,
+                 version=''):
         """Initializer for PolicyGradientAgent, similar to DeepQLearningAgent
         but does an extra assignment to the training function
         """
         DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames,
                                 buffer_size=buffer_size, gamma=gamma,
-                                n_actions=n_actions, use_target_net=False)
+                                n_actions=n_actions, use_target_net=False,
+                                version=version)
         self._actor_optimizer = tf.keras.optimizer.Adam(1e-6)
 
     def _agent_model(self):
@@ -631,10 +674,12 @@ class AdvantageActorCriticAgent(PolicyGradientAgent):
         Custom function to prepare the 
     """
     def __init__(self, board_size=10, frames=4, buffer_size=10000,
-                 gamma = 0.99, n_actions=3, use_target_net=True):
+                 gamma = 0.99, n_actions=3, use_target_net=True,
+                 version=''):
         DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames,
                                 buffer_size=buffer_size, gamma=gamma,
-                                n_actions=n_actions, use_target_net=use_target_net)
+                                n_actions=n_actions, use_target_net=use_target_net,
+                                version=version)
         self._optimizer = tf.keras.optimizers.RMSprop(5e-4)
 
     def _agent_model(self):
@@ -820,10 +865,12 @@ class HamiltonianCycleAgent(Agent):
         n_actions (int): no of actions available in the action space
     """
     def __init__(self, board_size=10, frames=4, buffer_size=10000,
-                 gamma = 0.99, n_actions=3, use_target_net=True):
+                 gamma = 0.99, n_actions=3, use_target_net=False,
+                 version=''):
         assert board_size%2 == 0, "Board size should be odd for hamiltonian cycle"
         Agent.__init__(self, board_size=board_size, frames=frames, buffer_size=buffer_size,
-                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net)
+                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net,
+                 version=version)
         # self._get_cycle()
         self._get_cycle_square()
     
@@ -999,12 +1046,14 @@ class SupervisedLearningAgent(DeepQLearningAgent):
         The model that will be trained and is simply DQN model + softmax
     """
     def __init__(self, board_size=10, frames=2, buffer_size=10000,
-                 gamma=0.99, n_actions=3, use_target_net=True):
+                 gamma=0.99, n_actions=3, use_target_net=True,
+                 version=''):
         """Initializer for SupervisedLearningAgent, similar to DeepQLearningAgent
         but creates extra layer and model for classification training
         """        
         DeepQLearningAgent.__init__(self, board_size=board_size, frames=frames, buffer_size=buffer_size,
-                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net)
+                 gamma=gamma, n_actions=n_actions, use_target_net=use_target_net,
+                 version=version)
         # define model with softmax activation, and use action as target
         # instead of the reward value
         self._model_action_out = Softmax()(self._model.get_layer('action_values').output)
